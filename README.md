@@ -87,7 +87,6 @@ $ kubectl create -f secret.yaml
 [scaling-controller.yaml](scaling-controller.yaml) has an example
 [Replication Controller](http://kubernetes.io/docs/user-guide/replication-controller/)
 that will set up Kubernetes to always run exactly one copy of the autoscaler.
-Edit the Docker image location and secret to reflect your setup.
 To create the Replication Controller:
 ```
 $ kubectl create -f scaling-controller.yaml

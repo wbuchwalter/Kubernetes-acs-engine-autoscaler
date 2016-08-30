@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: autoscaler
-        image: quay.io/openai/scaling:latest
+        image: quay.io/openai/kubernetes-ec2-autoscaler
         env:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
@@ -42,8 +42,4 @@ spec:
             - openai-kubernetes
             - -vvv
         imagePullPolicy: Always
-      nodeSelector:
-        aws/region: us-west-2
       restartPolicy: Always
-      imagePullSecrets:
-      - name: quay-login-secret
