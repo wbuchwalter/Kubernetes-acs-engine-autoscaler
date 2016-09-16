@@ -313,7 +313,7 @@ class Cluster(object):
                 state = ClusterNodeState.BUSY_UNSCHEDULABLE
             else:
                 state = ClusterNodeState.BUSY
-        elif pending_list:
+        elif pending_list and not node.unschedulable:
             state = ClusterNodeState.POD_PENDING
         elif (idle_selector_hash[instance_type] >= self.TYPE_IDLE_COUNT
               and age <= self.idle_threshold):
