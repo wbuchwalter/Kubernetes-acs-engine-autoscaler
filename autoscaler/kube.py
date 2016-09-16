@@ -15,6 +15,8 @@ class KubePodStatus(object):
     SUCCEEDED = 'Succeeded'
     FAILED = 'Failed'
 
+_CORDON_LABEL = 'openai/cordoned-by-autoscaler'
+
 
 class KubePod(object):
     def __init__(self, pod):
@@ -93,6 +95,9 @@ class KubeNode(object):
         return (None, '', None)
 
     def uncordon(self):
+        if not utils.parse_bool_label(self.selectors.get(_CORDON_LABEL)):
+            return False
+
         try:
             self.original.reload()
             self.original.obj['spec']['unschedulable'] = False
@@ -107,6 +112,7 @@ class KubeNode(object):
         try:
             self.original.reload()
             self.original.obj['spec']['unschedulable'] = True
+            self.original.obj['metadata']['labels'][_CORDON_LABEL] = 'true'
             self.original.update()
             logger.info("cordon {}".format(self))
             return True
