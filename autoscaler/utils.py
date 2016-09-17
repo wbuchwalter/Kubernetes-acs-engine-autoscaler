@@ -71,6 +71,10 @@ def parse_resource(resource):
         return parse_SI(resource)
 
 
+def parse_bool_label(value):
+    return str(value).lower() in ('1', 'true')
+
+
 def get_relevant_selectors(node_selectors):
     selectors = dict((k, v) for (k, v) in node_selectors.iteritems()
                      if k.startswith('aws/') or k.startswith('openai/'))
