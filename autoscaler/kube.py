@@ -96,16 +96,17 @@ class KubeNode(object):
 
     def uncordon(self):
         if not utils.parse_bool_label(self.selectors.get(_CORDON_LABEL)):
+            logger.debug('uncordon %s ignored', self)
             return False
 
         try:
             self.original.reload()
             self.original.obj['spec']['unschedulable'] = False
             self.original.update()
-            logger.info("uncordon {}".format(self))
+            logger.info("uncordon %s", self)
             return True
         except pykube.exceptions.HTTPError as ex:
-            logger.info("uncordon failed {} {}".format(self, ex))
+            logger.info("uncordon failed %s %s", self, ex)
             return False
 
     def cordon(self):
@@ -114,19 +115,19 @@ class KubeNode(object):
             self.original.obj['spec']['unschedulable'] = True
             self.original.obj['metadata']['labels'][_CORDON_LABEL] = 'true'
             self.original.update()
-            logger.info("cordon {}".format(self))
+            logger.info("cordon %s", self)
             return True
         except pykube.exceptions.HTTPError as ex:
-            logger.info("cordon failed {} {}".format(self, ex))
+            logger.info("cordon failed %s %s", self, ex)
             return False
 
     def delete(self):
         try:
             self.original.delete()
-            logger.info("delete {}".format(self))
+            logger.info("delete %s", self)
             return True
         except pykube.exceptions.HTTPError as ex:
-            logger.info("delete failed {} {}".format(self, ex))
+            logger.info("delete failed %s %s", self, ex)
             return False
 
     def count_pod(self, pod):
