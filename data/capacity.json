@@ -12,7 +12,10 @@
         "c4.4xlarge": {"cpu": 8, "memory": 31612444672, "pods": 30},
         "c4.8xlarge": {"cpu": 18, "memory": 63311120768, "pods": 30},
         "c4.xlarge": {"cpu": 2, "memory": 7843344384, "pods": 30},
-        "c4.large": {"cpu": 2, "memory": 3947372544, "pods": 30}
+        "c4.large": {"cpu": 2, "memory": 3947372544, "pods": 30},
+        "p2.xlarge": {"cpu": 2, "memory": 65498251264, "pods": 30},
+        "p2.8xlarge": {"cpu": 16, "memory": 523986010112, "pods": 30},
+        "p2.16xlarge": {"cpu": 32, "memory": 785979015168, "pods": 30}
     },
     "false": {
         "t2.micro": {"cpu": 1, "memory": 1040699392, "pods": 30},
@@ -28,6 +31,9 @@
         "c4.4xlarge": {"cpu": 16, "memory": 31612444672, "pods": 30},
         "c4.8xlarge": {"cpu": 36, "memory": 63311120768, "pods": 30},
         "c4.xlarge": {"cpu": 4, "memory": 7843344384, "pods": 30},
-        "c4.large": {"cpu": 2, "memory": 3947372544, "pods": 30}
+        "c4.large": {"cpu": 2, "memory": 3947372544, "pods": 30},
+        "p2.xlarge": {"cpu": 4, "memory": 65498251264, "pods": 30},
+        "p2.8xlarge": {"cpu": 32, "memory": 523986010112, "pods": 30},
+        "p2.16xlarge": {"cpu": 64, "memory": 785979015168, "pods": 30}
     }
 }
