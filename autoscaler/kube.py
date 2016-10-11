@@ -31,13 +31,14 @@ class KubePod(object):
         self.selectors = pod.obj['spec'].get('nodeSelector', {})
         self.labels = metadata.get('labels', {})
         self.annotations = metadata.get('annotations', {})
+        self.owner = self.labels.get('owner', None)
 
         # TODO: refactor
         requests = map(lambda c: c.get('resources', {}).get('requests', {}),
                        pod.obj['spec']['containers'])
         resource_requests = {}
         for d in requests:
-            for k, v in d.iteritems():
+            for k, v in d.items():
                 unitless_v = utils.parse_SI(v)
                 resource_requests[k] = resource_requests.get(k, 0.0) + unitless_v
         self.resources = KubeResource(pods=1, **resource_requests)
@@ -143,7 +144,7 @@ class KubeNode(object):
         """
         whether this node matches all the selectors on the pod
         """
-        for label, value in pod.selectors.iteritems():
+        for label, value in pod.selectors.items():
             if self.selectors.get(label) != value:
                 return False
         return True
@@ -169,22 +170,22 @@ class KubeResource(object):
 
     def __init__(self, **kwargs):
         self.raw = dict((k, utils.parse_resource(v))
-                        for (k, v) in kwargs.iteritems())
+                        for (k, v) in kwargs.items())
 
     def __add__(self, other):
-        keys = set(self.raw.iterkeys()) | set(other.raw.iterkeys())
+        keys = set(self.raw.keys()) | set(other.raw.keys())
         raw_diff = dict((k, self.raw.get(k, 0) + other.raw.get(k, 0))
                         for k in keys)
         return KubeResource(**raw_diff)
 
     def __sub__(self, other):
-        keys = set(self.raw.iterkeys()) | set(other.raw.iterkeys())
+        keys = set(self.raw.keys()) | set(other.raw.keys())
         raw_diff = dict((k, self.raw.get(k, 0) - other.raw.get(k, 0))
                         for k in keys)
         return KubeResource(**raw_diff)
 
     def __mul__(self, multiplier):
-        new_raw = dict((k, v * multiplier) for k, v in self.raw.iteritems())
+        new_raw = dict((k, v * multiplier) for k, v in self.raw.items())
         return KubeResource(**new_raw)
 
     def __rmul__(self, multiplier):
@@ -204,8 +205,8 @@ class KubeResource(object):
         """
         resource_diff = (self - other).raw
         num_resource_types = len(resource_diff)
-        num_eq = sum(1 for v in resource_diff.itervalues() if v == 0)
-        num_less = sum(1 for v in resource_diff.itervalues() if v < 0)
+        num_eq = sum(1 for v in resource_diff.values() if v == 0)
+        num_less = sum(1 for v in resource_diff.values() if v < 0)
         num_more = num_resource_types - num_eq - num_less
         return num_more - num_less
 
@@ -217,4 +218,4 @@ class KubeResource(object):
 
     @property
     def possible(self):
-        return all(map(lambda x: x >= 0, self.raw.itervalues()))
+        return all(map(lambda x: x >= 0, self.raw.values()))
