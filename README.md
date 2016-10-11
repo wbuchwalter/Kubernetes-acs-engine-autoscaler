@@ -138,6 +138,6 @@ $ nosetests test/
 ### Docker
 ```
 $ docker build -t autoscaler .
-$ docker run -v $HOME/.kube/config:/root/.kube/config autoscaler python main.py --regions us-west-2,us-east-1,us-west-1 --cluster-name my-kubernetes --aws-access-key 'XXXXXXXXX' --aws-secret-key 'XXXXXXXXXXXXX' --dry-run -vvv --kubeconfig /kubeconfig
+$ docker run -v $HOME/.kube/config:/root/.kube/config autoscaler python main.py --regions us-west-2,us-east-1,us-west-1 --cluster-name my-kubernetes --aws-access-key 'XXXXXXXXX' --aws-secret-key 'XXXXXXXXXXXXX' --dry-run -vvv --kubeconfig /root/.kube/config
 $ docker run -v $HOME/.kube/config:/root/.kube/config autoscaler nosetests test/
 ```
