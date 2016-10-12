@@ -377,7 +377,7 @@ class Cluster(object):
                 state = ClusterNodeState.BUSY
         elif pending_list and not node.unschedulable:
             state = ClusterNodeState.POD_PENDING
-        elif (idle_selector_hash[instance_type] >= self.TYPE_IDLE_COUNT
+        elif ((not self.type_idle_threshold or idle_selector_hash[instance_type] >= self.TYPE_IDLE_COUNT)
               and age <= self.idle_threshold) and not node.unschedulable:
             # there is already an instance of this type sitting idle
             # so we use the regular idle threshold for the grace period
