@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: autoscaler
-        image: quay.io/openai/kubernetes-ec2-autoscaler
+        image: quay.io/openai/kubernetes-ec2-autoscaler:basic-binpack
         env:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
@@ -32,7 +32,8 @@ spec:
               name: autoscaler
               key: slack-hook
         - name: PYKUBE_KUBERNETES_SERVICE_HOST
-          value: kubernetes.default
+          value: 10.100.0.1
+          # value: kubernetes.default
         command:
             - python
             - main.py
@@ -43,3 +44,6 @@ spec:
             - -vvv
         imagePullPolicy: Always
       restartPolicy: Always
+      dnsPolicy: Default  # Don't use cluster DNS.
+      nodeSelector:
+        aws/region: us-west-2

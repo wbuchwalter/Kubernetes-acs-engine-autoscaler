@@ -76,6 +76,6 @@ def parse_bool_label(value):
 
 
 def get_relevant_selectors(node_selectors):
-    selectors = dict((k, v) for (k, v) in node_selectors.iteritems()
+    selectors = dict((k, v) for (k, v) in node_selectors.items()
                      if k.startswith('aws/') or k.startswith('openai/'))
     return selectors

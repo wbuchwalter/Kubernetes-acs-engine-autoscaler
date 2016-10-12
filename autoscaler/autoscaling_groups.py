@@ -326,7 +326,7 @@ class AutoScalingGroup(object):
         return node.instance_id in self.instance_ids
 
     def is_match_for_selectors(self, selectors):
-        for label, value in selectors.iteritems():
+        for label, value in selectors.items():
             if self.selectors.get(label) != value:
                 return False
         return True

@@ -103,7 +103,7 @@ class TestCluster(unittest.TestCase):
         pod = KubePod(pykube.Pod(self.api, self.dummy_pod))
         selectors_hash = utils.selectors_to_hash(pod.selectors)
         asgs = self.cluster.autoscaling_groups.get_all_groups([])
-        self.cluster.fulfill_pending(asgs, selectors_hash, pod.resources, [pod])
+        self.cluster.fulfill_pending(asgs, selectors_hash, [pod])
 
         response = self.asg_client.describe_auto_scaling_groups()
         assert len(response['AutoScalingGroups']) == 1
@@ -113,7 +113,7 @@ class TestCluster(unittest.TestCase):
         pod = KubePod(pykube.Pod(self.api, self.dummy_pod))
         selectors_hash = utils.selectors_to_hash(pod.selectors)
         asgs = self.cluster.autoscaling_groups.get_all_groups([])
-        self.cluster.fulfill_pending(asgs, selectors_hash, pod.resources, [pod])
+        self.cluster.fulfill_pending(asgs, selectors_hash, [pod])
 
         response = self.asg_client.describe_auto_scaling_groups()
         assert len(response['AutoScalingGroups']) == 1
@@ -125,6 +125,7 @@ class TestCluster(unittest.TestCase):
         """
         node = self._spin_up_node()
         node.cordon = mock.Mock(return_value="mocked stuff")
+        node.drain = mock.Mock(return_value="mocked stuff")
         all_nodes = [node]
         managed_nodes = [n for n in all_nodes if node.is_managed()]
         running_insts_map = self.cluster.get_running_instances_map(managed_nodes)

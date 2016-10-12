@@ -28,6 +28,8 @@ DEBUG_LOGGING_MAP = {
 @click.option("--aws-access-key", default=None, envvar='AWS_ACCESS_KEY_ID')
 @click.option("--aws-secret-key", default=None, envvar='AWS_SECRET_ACCESS_KEY')
 @click.option("--instance-init-time", default=25 * 60)
+@click.option("--no-scale", is_flag=True)
+@click.option("--no-maintenance", is_flag=True)
 @click.option("--slack-hook", default=None, envvar='SLACK_HOOK',
               help='Slack webhook URL. If provided, post scaling messages '
                    'to Slack.')
@@ -39,12 +41,12 @@ DEBUG_LOGGING_MAP = {
               count=True)
 def main(cluster_name, regions, sleep, kubeconfig,
          aws_access_key, aws_secret_key, idle_threshold, type_idle_threshold,
-         instance_init_time, slack_hook, dry_run, verbose):
-    if verbose > 0:
-        logger_handler = logging.StreamHandler(sys.stderr)
-        logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(logger_handler)
-        logger.setLevel(DEBUG_LOGGING_MAP.get(verbose, logging.DEBUG))
+         instance_init_time, no_scale, no_maintenance,
+         slack_hook, dry_run, verbose):
+    logger_handler = logging.StreamHandler(sys.stderr)
+    logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(logger_handler)
+    logger.setLevel(DEBUG_LOGGING_MAP.get(verbose, logging.CRITICAL))
 
     if not (aws_secret_key and aws_access_key):
         logger.error("Missing AWS credentials. Please provide aws-access-key and aws-secret-key.")
@@ -58,6 +60,8 @@ def main(cluster_name, regions, sleep, kubeconfig,
                       instance_init_time=instance_init_time,
                       type_idle_threshold=type_idle_threshold,
                       cluster_name=cluster_name,
+                      scale_up=not no_scale,
+                      maintainance=not no_maintenance,
                       slack_hook=slack_hook,
                       dry_run=dry_run
                       )

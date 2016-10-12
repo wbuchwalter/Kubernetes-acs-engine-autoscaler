@@ -25,7 +25,7 @@ class KubePod(object):
         metadata = pod.obj['metadata']
         self.name = metadata['name']
         self.namespace = metadata['namespace']
-        self.node_name = pod.obj['spec'].get('nodeName', None)
+        self.node_name = pod.obj['spec'].get('nodeName')
         self.status = pod.obj['status']['phase']
         self.uid = metadata['uid']
         self.selectors = pod.obj['spec'].get('nodeSelector', {})
@@ -47,6 +47,14 @@ class KubePod(object):
         created_by = json.loads(self.annotations.get('kubernetes.io/created-by', '{}'))
         is_daemonset = created_by.get('reference', {}).get('kind') == 'DaemonSet'
         return is_daemonset or self.annotations.get('kubernetes.io/config.mirror')
+
+    def is_replicated(self):
+        created_by = json.loads(self.annotations.get('kubernetes.io/created-by', '{}'))
+        return created_by
+
+    def delete(self):
+        logger.info('Deleting Pod %s/%s', self.namespace, self.name)
+        return self.original.delete()
 
     def __hash__(self):
         return hash(self.uid)
@@ -95,6 +103,13 @@ class KubeNode(object):
 
         return (None, '', None)
 
+    def drain(self, pods):
+        for pod in pods:
+            if pod.is_replicated():
+                pod.delete()
+
+        logger.info("drained %s", self)
+
     def uncordon(self):
         if not utils.parse_bool_label(self.selectors.get(_CORDON_LABEL)):
             logger.debug('uncordon %s ignored', self)
@@ -104,7 +119,7 @@ class KubeNode(object):
             self.original.reload()
             self.original.obj['spec']['unschedulable'] = False
             self.original.update()
-            logger.info("uncordon %s", self)
+            logger.info("uncordoned %s", self)
             return True
         except pykube.exceptions.HTTPError as ex:
             logger.info("uncordon failed %s %s", self, ex)
@@ -116,7 +131,7 @@ class KubeNode(object):
             self.original.obj['spec']['unschedulable'] = True
             self.original.obj['metadata']['labels'][_CORDON_LABEL] = 'true'
             self.original.update()
-            logger.info("cordon %s", self)
+            logger.info("cordoned %s", self)
             return True
         except pykube.exceptions.HTTPError as ex:
             logger.info("cordon failed %s %s", self, ex)
@@ -125,7 +140,7 @@ class KubeNode(object):
     def delete(self):
         try:
             self.original.delete()
-            logger.info("delete %s", self)
+            logger.info("deleted %s", self)
             return True
         except pykube.exceptions.HTTPError as ex:
             logger.info("delete failed %s %s", self, ex)

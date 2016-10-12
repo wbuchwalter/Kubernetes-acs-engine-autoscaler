@@ -22,13 +22,15 @@ def notify_scale(asg, units_requested, pods, hook=None):
     message += '\n'
     message += 'Change triggered by {}'.format(pods_string)
 
-    resp = requests.post(hook, json={
-        "text": message,
-        "username": "kubernetes-ec2-autoscaler",
-        "icon_emoji": ":rabbit:",
-    })
-
-    logger.debug('SLACK: %s', resp.text)
+    try:
+        resp = requests.post(hook, json={
+            "text": message,
+            "username": "kubernetes-ec2-autoscaler",
+            "icon_emoji": ":rabbit:",
+        })
+        logger.debug('SLACK: %s', resp.text)
+    except requests.exceptions.ConnectionError as e:
+        logger.critical('Failed to SLACK: %s', e)
 
 
 def notify_failed_to_scale(selectors_hash, pods, hook=None):
@@ -47,10 +49,12 @@ def notify_failed_to_scale(selectors_hash, pods, hook=None):
     message += '\n'
     message += 'Pods affected: {}'.format(pods_string)
 
-    resp = requests.post(hook, json={
-        "text": message,
-        "username": "kubernetes-ec2-autoscaler",
-        "icon_emoji": ":rabbit:",
-    })
-
-    logger.debug('SLACK: %s', resp.text)
+    try:
+        resp = requests.post(hook, json={
+            "text": message,
+            "username": "kubernetes-ec2-autoscaler",
+            "icon_emoji": ":rabbit:",
+        })
+        logger.debug('SLACK: %s', resp.text)
+    except requests.exceptions.ConnectionError as e:
+        logger.critical('Failed to SLACK: %s', e)

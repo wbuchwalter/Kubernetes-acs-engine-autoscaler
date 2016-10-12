@@ -12,9 +12,9 @@ from autoscaler.kube import KubeResource
 with open(Config.CAPACITY_DATA, 'r') as f:
     data = json.loads(f.read())
     RESOURCE_SPEC = {}
-    for key, instance_map in data.iteritems():
+    for key, instance_map in data.items():
         RESOURCE_SPEC[key] = {}
-        for instance_type, resource_spec in instance_map.iteritems():
+        for instance_type, resource_spec in instance_map.items():
             resource_spec['cpu'] -= Config.CAPACITY_CPU_RESERVE
             resource = KubeResource(**resource_spec)
             RESOURCE_SPEC[key][instance_type] = resource
@@ -40,19 +40,19 @@ def is_possible(pod):
 
     # if an instance class was specified, see if pod fits in any type in
     # the class
-    for type_, resource in unit_caps.iteritems():
+    for type_, resource in unit_caps.items():
         if (not class_ or type_.startswith(class_)) and (resource - pod.resources).possible:
             return True
 
     return False
 
 
-def get_unit_capacity(group_or_node):
+def get_unit_capacity(group):
     """
     returns the KubeResource provided by one unit in the
     AutoScalingGroup or KubeNode
     """
-    computing = group_or_node.selectors.get(COMPUTING_SELECTOR_KEY, 'false')
-    selector = group_or_node.selectors.get(DEFAULT_TYPE_SELECTOR_KEY)
+    computing = group.selectors.get(COMPUTING_SELECTOR_KEY, 'false')
+    instance_type = group.launch_config['InstanceType']
     unit_caps = RESOURCE_SPEC[computing]
-    return unit_caps[selector]
+    return unit_caps[instance_type]

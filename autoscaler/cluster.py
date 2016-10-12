@@ -16,6 +16,12 @@ import autoscaler.utils as utils
 
 pykube.Pod.objects.namespace = None  # we are interested in all pods, incl. system ones
 
+# HACK: https://github.com/kelproject/pykube/issues/29#issuecomment-230026930
+import backports.ssl_match_hostname
+# Monkey-patch match_hostname with backports's match_hostname, allowing for IP addresses
+# XXX: the exception that this might raise is backports.ssl_match_hostname.CertificateError
+pykube.http.requests.packages.urllib3.connection.match_hostname = backports.ssl_match_hostname.match_hostname
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,6 +35,7 @@ class ClusterNodeState(object):
     IDLE_UNSCHEDULABLE = 'idle-unschedulable'
     BUSY_UNSCHEDULABLE = 'busy-unschedulable'
     BUSY = 'busy'
+    UNDER_UTILIZED = 'under-utilized'
 
 
 class Cluster(object):
@@ -38,6 +45,10 @@ class Cluster(object):
     # pod scheduling, instead of keeping the cluster at capacity
     # and having to spin up nodes for every job submission
     TYPE_IDLE_COUNT = 5
+
+    # the utilization threshold under which to consider a node
+    # under utilized and drainable
+    UTIL_THRESHOLD = 0.3
 
     # HACK: before we're ready to favor bigger instances in all cases
     # just prioritize the ones that we're confident about
@@ -54,6 +65,7 @@ class Cluster(object):
                  kubeconfig, idle_threshold, type_idle_threshold,
                  instance_init_time, cluster_name,
                  over_provision=5,
+                 scale_up=True, maintainance=True,
                  slack_hook=None, dry_run=False):
         if kubeconfig:
             # for using locally
@@ -80,6 +92,9 @@ class Cluster(object):
         self.type_idle_threshold = type_idle_threshold
         self.over_provision = over_provision
 
+        self.scale_up = scale_up
+        self.maintainance = maintainance
+
         self.slack_hook = slack_hook
 
         self.dry_run = dry_run
@@ -104,34 +119,43 @@ class Cluster(object):
                 )
             ]
 
+            for node in all_nodes:
+                for pod in running_or_pending_assigned_pods:
+                    if pod.node_name == node.name:
+                        node.count_pod(pod)
+
             asgs = self.autoscaling_groups.get_all_groups(all_nodes)
 
             pods_to_schedule = self.get_pods_to_schedule(pods)
 
-            logger.info("++++++++++++++ Scaling Up Begins ++++++++++++++++")
-            self.scale(
-                pods_to_schedule, all_nodes, asgs, running_insts_map)
-            logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
-            logger.info("++++++++++++++ Maintenance Begins ++++++++++++++++")
-            self.maintain(
-                managed_nodes, running_insts_map,
-                pods_to_schedule, running_or_pending_assigned_pods, asgs)
-            logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
+            if self.scale_up:
+                logger.info("++++++++++++++ Scaling Up Begins ++++++++++++++++")
+                self.scale(
+                    pods_to_schedule, all_nodes, asgs, running_insts_map)
+                logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
+            if self.maintainance:
+                logger.info("++++++++++++++ Maintenance Begins ++++++++++++++++")
+                self.maintain(
+                    managed_nodes, running_insts_map,
+                    pods_to_schedule, running_or_pending_assigned_pods, asgs)
+                logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
 
             return True
         except botocore.exceptions.ClientError as e:
             logger.warn(e)
             return False
 
-    def fulfill_pending(self, asgs, selectors_hash, pending, pods):
+    def fulfill_pending(self, asgs, selectors_hash, pods):
         """
         selectors_hash - string repr of selectors
-        pending - KubeResources of all pending pods
         pods - list of KubePods that are pending
         """
         logger.info(
             "========= Scaling for %s ========", selectors_hash)
-        logger.debug("pending: %s", pending)
+        logger.debug("pending: %s", pods[:5])
+
+        accounted_pods = dict((p, False) for p in pods)
+        num_unaccounted = len(pods)
 
         groups = utils.get_groups_for_hash(asgs, selectors_hash)
 
@@ -139,9 +163,28 @@ class Cluster(object):
 
         for group in groups:
             logger.debug("group: %s", group)
+
+            unit_capacity = capacity.get_unit_capacity(group)
+            new_instance_resources = []
+            assigned_pods = []
+            for pod, acc in accounted_pods.items():
+                if acc or not (unit_capacity - pod.resources).possible:
+                    continue
+
+                found_fit = False
+                for i, instance in enumerate(new_instance_resources):
+                    if (instance - pod.resources).possible:
+                        new_instance_resources[i] = instance - pod.resources
+                        assigned_pods[i].append(pod)
+                        found_fit = True
+                        break
+                if not found_fit:
+                    new_instance_resources.append(unit_capacity - pod.resources)
+                    assigned_pods.append([pod])
+
             # new desired # machines = # running nodes + # machines required to fit jobs that don't
             #   fit on running nodes. This scaling is conservative but won't create starving
-            units_needed = self._get_required_capacity(pending, group)
+            units_needed = len(new_instance_resources)
             units_needed += self.over_provision
 
             if self.autoscaling_groups.is_timed_out(group):
@@ -157,6 +200,7 @@ class Cluster(object):
 
             logger.debug("units_needed: %s", units_needed)
             logger.debug("units_requested: %s", units_requested)
+
             new_capacity = group.actual_capacity + units_requested
             if not self.dry_run:
                 scaled = group.scale(new_capacity)
@@ -168,13 +212,17 @@ class Cluster(object):
             else:
                 logger.info('[Dry run] Would have scaled up to %s', new_capacity)
 
-            pending -= units_requested * capacity.get_unit_capacity(group)
-            logger.debug("remining pending: %s", pending)
+            for i in range(min(len(assigned_pods), units_requested)):
+                for pod in assigned_pods[i]:
+                    accounted_pods[pod] = True
+                    num_unaccounted -= 1
 
-            if not pending.possible:
+            logger.debug("remining pending: %s", num_unaccounted)
+
+            if not num_unaccounted:
                 break
 
-        if pending.possible:
+        if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
             notify_failed_to_scale(selectors_hash, pods, hook=self.slack_hook)
 
@@ -227,7 +275,7 @@ class Cluster(object):
             instance_id_by_region.setdefault(node.region, []).append(node.instance_id)
 
         instance_map = {}
-        for region, instance_ids in instance_id_by_region.iteritems():
+        for region, instance_ids in instance_id_by_region.items():
             # note that this assumes that all instances have a valid region
             # the regions referenced by the nodes may also be outside of the
             # list of regions provided by the user
@@ -285,7 +333,7 @@ class Cluster(object):
         idle_selector_hash - current map of idle nodes by type. may be modified.
         """
         pending_list = []
-        for pods in pods_to_schedule.itervalues():
+        for pods in pods_to_schedule.values():
             for pod in pods:
                 if node.is_match(pod):
                     pending_list.append(pod)
@@ -293,6 +341,11 @@ class Cluster(object):
         # TODO: we can be a bit more aggressive in killing pods that are
         # replicated
         busy_list = [p for p in node_pods if not p.is_mirrored()]
+        undrainable_list = [p for p in node_pods if not p.is_replicated()]
+        utilization = sum((p.resources for p in busy_list), KubeResource())
+        under_utilized = (self.UTIL_THRESHOLD * node.capacity - utilization).possible
+        under_utilized_drainable = under_utilized and not undrainable_list
+
         maybe_inst = running_insts_map.get(node.instance_id)
         instance_type = utils.selectors_to_hash(asg.selectors) if asg else None
 
@@ -308,7 +361,7 @@ class Cluster(object):
             state = ClusterNodeState.INSTANCE_TERMINATED
         elif asg and len(asg.nodes) <= asg.min_size:
             state = ClusterNodeState.ASG_MIN_SIZE
-        elif busy_list:
+        elif busy_list and not under_utilized_drainable:
             if node.unschedulable:
                 state = ClusterNodeState.BUSY_UNSCHEDULABLE
             else:
@@ -327,6 +380,8 @@ class Cluster(object):
             # and mark the type as seen
             idle_selector_hash[instance_type] += 1
             state = ClusterNodeState.TYPE_GRACE_PERIOD
+        elif under_utilized_drainable and not node.unschedulable:
+            state = ClusterNodeState.UNDER_UTILIZED
         else:
             if node.unschedulable:
                 state = ClusterNodeState.IDLE_UNSCHEDULABLE
@@ -352,7 +407,9 @@ class Cluster(object):
                 pods_to_schedule.setdefault(utils.selectors_to_hash(pod.selectors), []).append(pod)
             else:
                 logger.warn(
-                    "Pending pod %s cannot fit %s. Ignored" % (pod.name, pod.selectors))
+                    "Pending pod %s cannot fit %s. "
+                    "Please check that requested resource amount is "
+                    "consistent with node selectors. Scheduling skipped." % (pod.name, pod.selectors))
         return pods_to_schedule
 
     def scale(self, pods_to_schedule, all_nodes, asgs, running_insts_map):
@@ -370,12 +427,12 @@ class Cluster(object):
                     or (not node.is_managed()):
                 cached_live_nodes.append(node)
 
-        # asg name -> pending KubeResource
-        pending_reqs = collections.defaultdict(KubeResource)
+        # asg name -> pending KubePods
+        pending_pods = {}
 
         # for each pending & unassigned job, try to fit them on current machines or count requested
         #   resources towards future machines
-        for selectors_hash, pods in pods_to_schedule.iteritems():
+        for selectors_hash, pods in pods_to_schedule.items():
             for pod in pods:
                 fitting = None
                 for node in cached_live_nodes:
@@ -383,10 +440,9 @@ class Cluster(object):
                         fitting = node
                         break
                 if fitting is None:
-                    # because a pod may be ablt to fit in multiple groups
+                    # because a pod may be able to fit in multiple groups
                     # pick a group now
-                    req = pod.resources
-                    pending_reqs[selectors_hash] += req
+                    pending_pods.setdefault(selectors_hash, []).append(pod)
                     logger.info(
                         "{pod} is pending ({selectors_hash})".format(
                             pod=pod, selectors_hash=selectors_hash))
@@ -396,8 +452,8 @@ class Cluster(object):
                                                               node=fitting))
 
         # scale each node type to reach the new capacity
-        for selectors_hash, pending in pending_reqs.iteritems():
-            self.fulfill_pending(asgs, selectors_hash, pending, pods_to_schedule[selectors_hash])
+        for selectors_hash, pending in pending_pods.items():
+            self.fulfill_pending(asgs, selectors_hash, pending)
 
     def maintain(self, cached_managed_nodes, running_insts_map,
                  pods_to_schedule, running_or_pending_assigned_pods, asgs):
@@ -431,6 +487,15 @@ class Cluster(object):
                          ClusterNodeState.ASG_MIN_SIZE):
                 # do nothing
                 pass
+            elif state == ClusterNodeState.UNDER_UTILIZED:
+                if not self.dry_run:
+                    if not asg:
+                        logger.warn('Cannot find ASG for node %s. Not cordoned.', node)
+                    else:
+                        node.cordon()
+                        node.drain(pods_by_node.get(node.name, []))
+                else:
+                    logger.info('[Dry run] Would have drained and cordoned %s', node)
             elif state == ClusterNodeState.IDLE_SCHEDULABLE:
                 if not self.dry_run:
                     if not asg:
@@ -460,7 +525,7 @@ class Cluster(object):
                 else:
                     logger.info('[Dry run] Would have deleted %s', node)
             else:
-                raise "Unhandled state", state
+                raise Exception("Unhandled state: {}".format(state))
 
         logger.info("++++++++++++++ Maintaining Unmanaged Instances ++++++++++++++++")
         # these are instances that have been running for a while but it's not properly managed
