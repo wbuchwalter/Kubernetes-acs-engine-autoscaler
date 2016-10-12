@@ -564,6 +564,9 @@ class Cluster(object):
                             asg.client.terminate_instance_in_auto_scaling_group(
                                 InstanceId=inst.id, ShouldDecrementDesiredCapacity=False)
                             logger.info("terminating unmanaged %s" % inst)
+                            self.stats.increment(
+                                'kubernetes.custom.node.state.unmanaged',
+                                timestamp=stats_time)
                             # TODO: try to delete node from kube as well
                             # in the case where kubelet may have registered but node
                             # labels have not been applied yet, so it appears unmanaged
