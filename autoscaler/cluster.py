@@ -35,7 +35,8 @@ class ClusterNodeState(object):
     IDLE_UNSCHEDULABLE = 'idle-unschedulable'
     BUSY_UNSCHEDULABLE = 'busy-unschedulable'
     BUSY = 'busy'
-    UNDER_UTILIZED = 'under-utilized'
+    UNDER_UTILIZED_DRAINABLE = 'under-utilized-drainable'
+    UNDER_UTILIZED_UNDRAINABLE = 'under-utilized-undrainable'
 
 
 class Cluster(object):
@@ -344,7 +345,7 @@ class Cluster(object):
         undrainable_list = [p for p in node_pods if not p.is_replicated()]
         utilization = sum((p.resources for p in busy_list), KubeResource())
         under_utilized = (self.UTIL_THRESHOLD * node.capacity - utilization).possible
-        under_utilized_drainable = under_utilized and not undrainable_list
+        drainable = not undrainable_list
 
         maybe_inst = running_insts_map.get(node.instance_id)
         instance_type = utils.selectors_to_hash(asg.selectors) if asg else None
@@ -361,7 +362,7 @@ class Cluster(object):
             state = ClusterNodeState.INSTANCE_TERMINATED
         elif asg and len(asg.nodes) <= asg.min_size:
             state = ClusterNodeState.ASG_MIN_SIZE
-        elif busy_list and not under_utilized_drainable:
+        elif busy_list and not under_utilized:
             if node.unschedulable:
                 state = ClusterNodeState.BUSY_UNSCHEDULABLE
             else:
@@ -380,8 +381,11 @@ class Cluster(object):
             # and mark the type as seen
             idle_selector_hash[instance_type] += 1
             state = ClusterNodeState.TYPE_GRACE_PERIOD
-        elif under_utilized_drainable and not node.unschedulable:
-            state = ClusterNodeState.UNDER_UTILIZED
+        elif under_utilized and not node.unschedulable:
+            if drainable:
+                state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE
+            else:
+                state = ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE
         else:
             if node.unschedulable:
                 state = ClusterNodeState.IDLE_UNSCHEDULABLE
@@ -487,7 +491,7 @@ class Cluster(object):
                          ClusterNodeState.ASG_MIN_SIZE):
                 # do nothing
                 pass
-            elif state == ClusterNodeState.UNDER_UTILIZED:
+            elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE:
                 if not self.dry_run:
                     if not asg:
                         logger.warn('Cannot find ASG for node %s. Not cordoned.', node)
@@ -524,6 +528,9 @@ class Cluster(object):
                     node.delete()
                 else:
                     logger.info('[Dry run] Would have deleted %s', node)
+            elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:
+                # noop for now
+                pass
             else:
                 raise Exception("Unhandled state: {}".format(state))
 
