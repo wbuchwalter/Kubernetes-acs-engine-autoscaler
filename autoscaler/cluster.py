@@ -2,10 +2,12 @@ import collections
 import datetime
 import logging
 import math
+import time
 
 import botocore
 import boto3
 import botocore.exceptions
+import datadog
 import pykube
 
 import autoscaler.autoscaling_groups as autoscaling_groups
@@ -67,7 +69,7 @@ class Cluster(object):
                  instance_init_time, cluster_name,
                  over_provision=5,
                  scale_up=True, maintainance=True,
-                 slack_hook=None, dry_run=False):
+                 datadog_api_key=None, slack_hook=None, dry_run=False):
         if kubeconfig:
             # for using locally
             logger.debug('Using kubeconfig %s', kubeconfig)
@@ -97,6 +99,12 @@ class Cluster(object):
         self.maintainance = maintainance
 
         self.slack_hook = slack_hook
+
+        if datadog_api_key:
+            datadog.initialize(api_key=datadog_api_key)
+            logger.info('Datadog initialized')
+        self.stats = datadog.ThreadStats()
+        self.stats.start()
 
         self.dry_run = dry_run
 
@@ -477,6 +485,8 @@ class Cluster(object):
         for p in running_or_pending_assigned_pods:
             pods_by_node.setdefault(p.node_name, []).append(p)
 
+        stats_time = time.time()
+
         for node in cached_managed_nodes:
             asg = utils.get_group_for_node(asgs, node)
             state = self.get_node_state(
@@ -484,6 +494,10 @@ class Cluster(object):
                 running_insts_map, idle_selector_hash)
 
             logger.info("node: %-*s state: %s" % (75, node, state))
+            self.stats.increment(
+                'kubernetes.custom.node.state.{}'.format(state.replace('-', '_')),
+                timestamp=stats_time)
+
             # state machine & why doesnt python have case?
             if state in (ClusterNodeState.POD_PENDING, ClusterNodeState.BUSY,
                          ClusterNodeState.GRACE_PERIOD,

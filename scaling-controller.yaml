@@ -31,6 +31,11 @@ spec:
             secretKeyRef:
               name: autoscaler
               key: slack-hook
+        - name: DATADOG_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: datadog-api-key
         - name: PYKUBE_KUBERNETES_SERVICE_HOST
           value: 10.100.0.1
           # value: kubernetes.default
