@@ -54,6 +54,12 @@ class KubePod(object):
         created_by = json.loads(self.annotations.get('kubernetes.io/created-by', '{}'))
         return created_by
 
+    def is_critical(self):
+        return utils.parse_bool_label(self.labels.get('openai/do-not-drain'))
+
+    def is_drainable(self):
+        return self.is_replicated() and not self.is_critical()
+
     def delete(self):
         logger.info('Deleting Pod %s/%s', self.namespace, self.name)
         return self.original.delete()
@@ -108,7 +114,7 @@ class KubeNode(object):
 
     def drain(self, pods):
         for pod in pods:
-            if pod.is_replicated():
+            if pod.is_drainable():
                 pod.delete()
 
         logger.info("drained %s", self)

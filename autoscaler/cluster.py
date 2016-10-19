@@ -350,7 +350,7 @@ class Cluster(object):
         # TODO: we can be a bit more aggressive in killing pods that are
         # replicated
         busy_list = [p for p in node_pods if not p.is_mirrored()]
-        undrainable_list = [p for p in node_pods if not p.is_replicated()]
+        undrainable_list = [p for p in node_pods if not p.is_drainable()]
         utilization = sum((p.resources for p in busy_list), KubeResource())
         under_utilized = (self.UTIL_THRESHOLD * node.capacity - utilization).possible
         drainable = not undrainable_list
