@@ -3,7 +3,7 @@ kind: Node
 metadata:
   annotations:
     aws/sgs: kubernetes-worker
-  creationTimestamp: 2016-08-25T05:13:16Z
+  creationTimestamp: "2016-08-25T05:13:16Z"
   labels:
     aws/ami-id: ami-deadbeef
     aws/az: us-west-2c

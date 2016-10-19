@@ -4,7 +4,7 @@ metadata:
   annotations:
     kubernetes.io/created-by: |
       {"kind":"SerializedReference","apiVersion":"v1","reference":{"kind":"DaemonSet","namespace":"system","name":"container-monitor","uid":"826c7436-4558-11e6-afb0-0af8d945d5d3","apiVersion":"extensions","resourceVersion":"232650804"}}
-  creationTimestamp: 2016-08-25T05:11:56Z
+  creationTimestamp: "2016-08-25T05:11:56Z"
   generateName: container-monitor-
   labels:
     app: container-monitor

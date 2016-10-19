@@ -1,3 +1,4 @@
+import collections
 import os.path
 import unittest
 
@@ -7,7 +8,7 @@ import mock
 import moto
 import yaml
 
-from autoscaler.cluster import Cluster
+from autoscaler.cluster import Cluster, ClusterNodeState
 from autoscaler.kube import KubePod, KubeNode
 import autoscaler.utils as utils
 
@@ -94,6 +95,10 @@ class TestCluster(unittest.TestCase):
 
         self.dummy_node['metadata']['labels']['aws/id'] = instance_id
         node = KubeNode(pykube.Node(self.api, self.dummy_node))
+        node.cordon = mock.Mock(return_value="mocked stuff")
+        node.drain = mock.Mock(return_value="mocked stuff")
+        node.uncordon = mock.Mock(return_value="mocked stuff")
+        node.delete = mock.Mock(return_value="mocked stuff")
         return node
 
     def test_scale_up_selector(self):
@@ -106,8 +111,8 @@ class TestCluster(unittest.TestCase):
         self.cluster.fulfill_pending(asgs, selectors_hash, [pod])
 
         response = self.asg_client.describe_auto_scaling_groups()
-        assert len(response['AutoScalingGroups']) == 1
-        assert response['AutoScalingGroups'][0]['DesiredCapacity'] == 0
+        self.assertEqual(len(response['AutoScalingGroups']), 1)
+        self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 0)
 
     def test_scale_up(self):
         pod = KubePod(pykube.Pod(self.api, self.dummy_pod))
@@ -116,16 +121,14 @@ class TestCluster(unittest.TestCase):
         self.cluster.fulfill_pending(asgs, selectors_hash, [pod])
 
         response = self.asg_client.describe_auto_scaling_groups()
-        assert len(response['AutoScalingGroups']) == 1
-        assert response['AutoScalingGroups'][0]['DesiredCapacity'] > 0
+        self.assertEqual(len(response['AutoScalingGroups']), 1)
+        self.assertGreater(response['AutoScalingGroups'][0]['DesiredCapacity'], 0)
 
     def test_scale_down(self):
         """
         kube node with daemonset and no pod --> cordon
         """
         node = self._spin_up_node()
-        node.cordon = mock.Mock(return_value="mocked stuff")
-        node.drain = mock.Mock(return_value="mocked stuff")
         all_nodes = [node]
         managed_nodes = [n for n in all_nodes if node.is_managed()]
         running_insts_map = self.cluster.get_running_instances_map(managed_nodes)
@@ -142,8 +145,8 @@ class TestCluster(unittest.TestCase):
             pods_to_schedule, running_or_pending_assigned_pods, asgs)
 
         response = self.asg_client.describe_auto_scaling_groups()
-        assert len(response['AutoScalingGroups']) == 1
-        assert response['AutoScalingGroups'][0]['DesiredCapacity'] == 1
+        self.assertEqual(len(response['AutoScalingGroups']), 1)
+        self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
         node.cordon.assert_called_once_with()
 
     def test_scale_down_grace_period(self):
@@ -151,7 +154,6 @@ class TestCluster(unittest.TestCase):
         kube node with daemonset and no pod + grace period --> noop
         """
         node = self._spin_up_node()
-        node.cordon = mock.Mock(return_value="mocked stuff")
         all_nodes = [node]
         managed_nodes = [n for n in all_nodes if node.is_managed()]
         running_insts_map = self.cluster.get_running_instances_map(managed_nodes)
@@ -167,8 +169,8 @@ class TestCluster(unittest.TestCase):
             pods_to_schedule, running_or_pending_assigned_pods, asgs)
 
         response = self.asg_client.describe_auto_scaling_groups()
-        assert len(response['AutoScalingGroups']) == 1
-        assert response['AutoScalingGroups'][0]['DesiredCapacity'] == 1
+        self.assertEqual(len(response['AutoScalingGroups']), 1)
+        self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
         node.cordon.assert_not_called()
 
     def test_scale_down_busy(self):
@@ -176,37 +178,123 @@ class TestCluster(unittest.TestCase):
         kube node with daemonset and pod/rc-pod --> noop
         """
         node = self._spin_up_node()
-        node.cordon = mock.Mock(return_value="mocked stuff")
         all_nodes = [node]
         managed_nodes = [n for n in all_nodes if node.is_managed()]
         running_insts_map = self.cluster.get_running_instances_map(managed_nodes)
         pods_to_schedule = {}
         asgs = self.cluster.autoscaling_groups.get_all_groups(all_nodes)
 
-        # kube node with daemonset and no pod --> cordon
+        # kube node with daemonset and pod --> noop
         ds_pod = KubePod(pykube.Pod(self.api, self.dummy_ds_pod))
         pod = KubePod(pykube.Pod(self.api, self.dummy_pod))
-        running_or_pending_assigned_pods = [ds_pod, pod]
-
-        self.cluster.maintain(
-            managed_nodes, running_insts_map,
-            pods_to_schedule, running_or_pending_assigned_pods, asgs)
-
-        response = self.asg_client.describe_auto_scaling_groups()
-        assert len(response['AutoScalingGroups']) == 1
-        assert response['AutoScalingGroups'][0]['DesiredCapacity'] == 1
-        node.cordon.assert_not_called()
-
-        # kube node with daemonset and rc pod --> noop
-        ds_pod = KubePod(pykube.Pod(self.api, self.dummy_ds_pod))
         rc_pod = KubePod(pykube.Pod(self.api, self.dummy_rc_pod))
-        running_or_pending_assigned_pods = [ds_pod, rc_pod]
+
+        pod_scenarios = [
+            # kube node with daemonset and pod --> noop
+            [ds_pod, pod],
+            # kube node with daemonset and rc pod --> noop
+            [ds_pod, rc_pod]
+        ]
+
+        # make sure we're not on grace period
+        self.cluster.idle_threshold = -1
+        self.cluster.type_idle_threshold = -1
+
+        for pods in pod_scenarios:
+            state = self.cluster.get_node_state(
+                node, asgs[0], pods, pods_to_schedule,
+                running_insts_map, collections.Counter())
+            self.assertEqual(state, ClusterNodeState.BUSY)
+
+            self.cluster.maintain(
+                managed_nodes, running_insts_map,
+                pods_to_schedule, pods, asgs)
+
+            response = self.asg_client.describe_auto_scaling_groups()
+            self.assertEqual(len(response['AutoScalingGroups']), 1)
+            self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
+            node.cordon.assert_not_called()
+
+    def test_scale_down_under_utilized_undrainable(self):
+        """
+        kube node with daemonset and pod/rc-pod --> noop
+        """
+        node = self._spin_up_node()
+        all_nodes = [node]
+        managed_nodes = [n for n in all_nodes if node.is_managed()]
+        running_insts_map = self.cluster.get_running_instances_map(managed_nodes)
+        pods_to_schedule = {}
+        asgs = self.cluster.autoscaling_groups.get_all_groups(all_nodes)
+
+        # create some undrainable pods
+        ds_pod = KubePod(pykube.Pod(self.api, self.dummy_ds_pod))
+        for container in self.dummy_pod['spec']['containers']:
+            container.pop('resources', None)
+        pod = KubePod(pykube.Pod(self.api, self.dummy_pod))
+        self.dummy_rc_pod['metadata']['labels']['openai/do-not-drain'] = 'true'
+        for container in self.dummy_rc_pod['spec']['containers']:
+            container.pop('resources', None)
+        rc_pod = KubePod(pykube.Pod(self.api, self.dummy_rc_pod))
+
+        pod_scenarios = [
+            # kube node with daemonset and pod with no resource ask --> noop
+            [ds_pod, pod],
+            # kube node with daemonset and critical rc pod --> noop
+            [ds_pod, rc_pod]
+        ]
+
+        # make sure we're not on grace period
+        self.cluster.idle_threshold = -1
+        self.cluster.type_idle_threshold = -1
+
+        for pods in pod_scenarios:
+            state = self.cluster.get_node_state(
+                node, asgs[0], pods, pods_to_schedule,
+                running_insts_map, collections.Counter())
+            self.assertEqual(state, ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE)
+
+            self.cluster.maintain(
+                managed_nodes, running_insts_map,
+                pods_to_schedule, pods, asgs)
+
+            response = self.asg_client.describe_auto_scaling_groups()
+            self.assertEqual(len(response['AutoScalingGroups']), 1)
+            self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
+            node.cordon.assert_not_called()
+
+    def test_scale_down_under_utilized_drainable(self):
+        """
+        kube node with daemonset and rc-pod --> cordon+drain
+        """
+        node = self._spin_up_node()
+        all_nodes = [node]
+        managed_nodes = [n for n in all_nodes if node.is_managed()]
+        running_insts_map = self.cluster.get_running_instances_map(managed_nodes)
+        pods_to_schedule = {}
+        asgs = self.cluster.autoscaling_groups.get_all_groups(all_nodes)
+
+        # create some undrainable pods
+        ds_pod = KubePod(pykube.Pod(self.api, self.dummy_ds_pod))
+        for container in self.dummy_rc_pod['spec']['containers']:
+            container.pop('resources', None)
+        rc_pod = KubePod(pykube.Pod(self.api, self.dummy_rc_pod))
+        pods = [ds_pod, rc_pod]
+
+        # make sure we're not on grace period
+        self.cluster.idle_threshold = -1
+        self.cluster.type_idle_threshold = -1
+
+        state = self.cluster.get_node_state(
+            node, asgs[0], pods, pods_to_schedule,
+            running_insts_map, collections.Counter())
+        self.assertEqual(state, ClusterNodeState.UNDER_UTILIZED_DRAINABLE)
 
         self.cluster.maintain(
             managed_nodes, running_insts_map,
-            pods_to_schedule, running_or_pending_assigned_pods, asgs)
+            pods_to_schedule, pods, asgs)
 
         response = self.asg_client.describe_auto_scaling_groups()
-        assert len(response['AutoScalingGroups']) == 1
-        assert response['AutoScalingGroups'][0]['DesiredCapacity'] == 1
-        node.cordon.assert_not_called()
+        self.assertEqual(len(response['AutoScalingGroups']), 1)
+        self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
+        node.cordon.assert_called_once_with()
+        node.drain.assert_called_once_with(pods)

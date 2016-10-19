@@ -29,5 +29,8 @@ class TestCapacity(unittest.TestCase):
             'aws/type': 't2.micro'
         }
 
+        print repr(self.dummy_pod['metadata']['creationTimestamp'])
+        from dateutil.parser import parse as dateutil_parse
+        print dateutil_parse(self.dummy_pod['metadata']['creationTimestamp'])
         pod = KubePod(pykube.Pod(self.api, self.dummy_pod))
         assert not capacity.is_possible(pod)
