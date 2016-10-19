@@ -1,6 +1,6 @@
 import json
 import logging
-from dateutil.parser import parse
+from dateutil.parser import parse as dateutil_parse
 
 import pykube.exceptions
 
@@ -33,8 +33,8 @@ class KubePod(object):
         self.labels = metadata.get('labels', {})
         self.annotations = metadata.get('annotations', {})
         self.owner = self.labels.get('owner', None)
-        self.creation_time = parse(metadata['creationTimestamp'])
-        
+        self.creation_time = dateutil_parse(metadata['creationTimestamp'])
+
         # TODO: refactor
         requests = map(lambda c: c.get('resources', {}).get('requests', {}),
                        pod.obj['spec']['containers'])
@@ -85,7 +85,7 @@ class KubeNode(object):
         self.capacity = KubeResource(**node.obj['status']['capacity'])
         self.used_capacity = KubeResource()
         self.unschedulable = node.obj['spec'].get('unschedulable', False)
-        self.creation_time = parse(metadata['creationTimestamp'])
+        self.creation_time = dateutil_parse(metadata['creationTimestamp'])
 
     def _get_instance_data(self):
         """
