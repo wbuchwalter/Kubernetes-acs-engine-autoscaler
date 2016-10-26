@@ -9,7 +9,7 @@ based on the pending job queue.
 The key features are:
 - Scaling on flexible resource requirements: the autoscaler determines the resources it needs
 from the pending job queue, and scales up the appropriate ASGs while respecting job
-contraints such as node selectors
+constraints such as node selectors
 - Multi-Region Support: the autoscaler can detect scaling errors and overflow to secondary
 AWS regions
 - Draining nodes on scale in: the autoscaler makes sure to not kill in-flight jobs
@@ -114,7 +114,7 @@ $ python main.py [options]
 - --cluster-name: Name of the Kubernetes cluster. Must match the value of the `KubernetesCluster` tag on Auto Scaling Groups.
 - --regions: List of comma-separated regions in order of preference. E.g. `us-west-2,us-east-1` will use "us-west-2" as the
 primary region and "us-east-1" as the secondary.
-- --kubeconfig: Path to kubeconfig YAML file. Leave blank if runnning in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
+- --kubeconfig: Path to kubeconfig YAML file. Leave blank if running in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
 - --idle-threshold: This defines the maximum duration (in seconds) for an instance to be kept idle.
 - --type-idle-threshold: For each instance type, we keep a few running and idle so the cluster has spare capacity for different types of requests. This defines the maximum duration (in seconds) for an instance to be kept idle.
 - --aws-access-key: AWS access key. Can also be specified in environment variable `AWS_ACCESS_KEY`
