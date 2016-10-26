@@ -1,7 +1,7 @@
 import json
 import logging
-from dateutil.parser import parse as dateutil_parse
 
+from dateutil.parser import parse as dateutil_parse
 import pykube.exceptions
 
 import autoscaler.utils as utils

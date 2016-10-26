@@ -51,6 +51,8 @@ spec:
             - -vvv
             - --type-idle-threshold
             - "0"
+            - --sleep
+            - "30"
         imagePullPolicy: Always
       restartPolicy: Always
       dnsPolicy: Default  # Don't use cluster DNS.

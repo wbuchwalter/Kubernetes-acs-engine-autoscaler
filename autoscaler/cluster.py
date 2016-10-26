@@ -87,6 +87,7 @@ class Cluster(object):
         self.autoscaling_groups = autoscaling_groups.AutoScalingGroups(
             session=self.session, regions=regions,
             cluster_name=cluster_name)
+        self.autoscaling_timeouts = autoscaling_groups.AutoScalingTimeouts(self.session)
 
         # config
         self.regions = regions
@@ -196,7 +197,7 @@ class Cluster(object):
             units_needed = len(new_instance_resources)
             units_needed += self.over_provision
 
-            if self.autoscaling_groups.is_timed_out(group):
+            if self.autoscaling_timeouts.is_timed_out(group):
                 # if a machine is timed out, it cannot be scaled further
                 # just account for its current capacity (it may have more
                 # being launched, but we're being conservative)
@@ -316,7 +317,11 @@ class Cluster(object):
     def _prioritize_groups(self, groups):
         """
         returns the groups sorted in order of where we should try to schedule
-        things first
+        things first. we currently try to prioritize in the following order:
+        - region
+        - whether or not the group launches spot instances (prefer spot)
+        - manually set _GROUP_PRIORITIES
+        - group name
         """
         def sort_key(group):
             region = self._GROUP_DEFAULT_PRIORITY
@@ -325,7 +330,7 @@ class Cluster(object):
             except ValueError:
                 pass
             priority = self._GROUP_PRIORITIES.get(group.selectors.get('aws/type'), self._GROUP_DEFAULT_PRIORITY)
-            return (region, priority, group.name)
+            return (region, not group.is_spot, priority, group.name)
         return sorted(groups, key=sort_key)
 
     def get_node_state(self, node, asg, node_pods, pods_to_schedule,
@@ -428,8 +433,7 @@ class Cluster(object):
         """
         scale up logic
         """
-        for asg in asgs:
-            self.autoscaling_groups.reconcile_limits(asg)
+        self.autoscaling_timeouts.refresh_timeouts(asgs, dry_run=self.dry_run)
 
         cached_live_nodes = []
         for node in all_nodes:
@@ -466,6 +470,8 @@ class Cluster(object):
         # scale each node type to reach the new capacity
         for selectors_hash, pending in pending_pods.items():
             self.fulfill_pending(asgs, selectors_hash, pending)
+
+        # TODO: make sure desired capacities of untouched groups are consistent
 
     def maintain(self, cached_managed_nodes, running_insts_map,
                  pods_to_schedule, running_or_pending_assigned_pods, asgs):
