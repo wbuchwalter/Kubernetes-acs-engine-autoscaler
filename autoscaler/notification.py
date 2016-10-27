@@ -11,11 +11,7 @@ def notify_scale(asg, units_requested, pods, hook=None):
         logger.debug('SLACK_HOOK not configured.')
         return
 
-    if len(pods) > 5:
-        pods_string = '{}, and {} others'.format(
-            ', '.join(pod.name for pod in pods[:4]), len(pods) - 4)
-    else:
-        pods_string = ', '.join(pod.name for pod in pods)
+    pods_string = _generate_pod_string(pods)
 
     message = 'ASG {}[{}] scaled up by {} to new capacity {}'.format(
         asg.name, asg.region, units_requested, asg.desired_capacity)
@@ -38,11 +34,7 @@ def notify_failed_to_scale(selectors_hash, pods, hook=None):
         logger.debug('SLACK_HOOK not configured.')
         return
 
-    if len(pods) > 5:
-        pods_string = '{}, and {} others'.format(
-            ', '.join(pod.name for pod in pods[:4]), len(pods) - 4)
-    else:
-        pods_string = ', '.join(pod.name for pod in pods)
+    pods_string = _generate_pod_string(pods)
 
     message = 'Failed to scale {} sufficiently. Backing off...'.format(
         json.dumps(selectors_hash))
@@ -58,3 +50,13 @@ def notify_failed_to_scale(selectors_hash, pods, hook=None):
         logger.debug('SLACK: %s', resp.text)
     except requests.exceptions.ConnectionError as e:
         logger.critical('Failed to SLACK: %s', e)
+
+
+def _generate_pod_string(pods):
+    if len(pods) > 5:
+        pods_string = '{}, and {} others'.format(
+            ', '.join('{}/{}'.format(pod.namespace, pod.name) for pod in pods[:4]),
+            len(pods) - 4)
+    else:
+        pods_string = ', '.join('{}/{}'.format(pod.namespace, pod.name) for pod in pods)
+    return pods_string
