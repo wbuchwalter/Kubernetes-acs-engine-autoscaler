@@ -86,7 +86,7 @@ class TestCluster(unittest.TestCase):
         for moto_mock in self.mocks:
             moto_mock.stop()
 
-    def _spin_up_node(self):
+    def _spin_up_node(self, launch_time=None):
         # spin up dummy ec2 node
         self.asg_client.set_desired_capacity(AutoScalingGroupName='dummy-asg',
                                              DesiredCapacity=1)
@@ -129,6 +129,33 @@ class TestCluster(unittest.TestCase):
         kube node with daemonset and no pod --> cordon
         """
         node = self._spin_up_node()
+
+        all_nodes = [node]
+        managed_nodes = [n for n in all_nodes if node.is_managed()]
+        running_insts_map = self.cluster.get_running_instances_map(managed_nodes)
+        pods_to_schedule = {}
+        asgs = self.cluster.autoscaling_groups.get_all_groups(all_nodes)
+
+        ds_pod = KubePod(pykube.Pod(self.api, self.dummy_ds_pod))
+        running_or_pending_assigned_pods = [ds_pod]
+
+        self.cluster.idle_threshold = -1
+        self.cluster.type_idle_threshold = -1
+        self.cluster.LAUNCH_HOUR_THRESHOLD = -1
+        self.cluster.maintain(
+            managed_nodes, running_insts_map,
+            pods_to_schedule, running_or_pending_assigned_pods, asgs)
+
+        response = self.asg_client.describe_auto_scaling_groups()
+        self.assertEqual(len(response['AutoScalingGroups']), 1)
+        self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
+        node.cordon.assert_called_once_with()
+
+    def test_scale_down_launch_grace_period(self):
+        """
+        kube node with daemonset and no pod + launch grace period --> noop
+        """
+        node = self._spin_up_node()
         all_nodes = [node]
         managed_nodes = [n for n in all_nodes if node.is_managed()]
         running_insts_map = self.cluster.get_running_instances_map(managed_nodes)
@@ -147,7 +174,7 @@ class TestCluster(unittest.TestCase):
         response = self.asg_client.describe_auto_scaling_groups()
         self.assertEqual(len(response['AutoScalingGroups']), 1)
         self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
-        node.cordon.assert_called_once_with()
+        node.cordon.assert_not_called()
 
     def test_scale_down_grace_period(self):
         """
@@ -246,6 +273,7 @@ class TestCluster(unittest.TestCase):
         # make sure we're not on grace period
         self.cluster.idle_threshold = -1
         self.cluster.type_idle_threshold = -1
+        self.cluster.LAUNCH_HOUR_THRESHOLD = -1
 
         for pods in pod_scenarios:
             state = self.cluster.get_node_state(
@@ -283,6 +311,7 @@ class TestCluster(unittest.TestCase):
         # make sure we're not on grace period
         self.cluster.idle_threshold = -1
         self.cluster.type_idle_threshold = -1
+        self.cluster.LAUNCH_HOUR_THRESHOLD = -1
 
         state = self.cluster.get_node_state(
             node, asgs[0], pods, pods_to_schedule,

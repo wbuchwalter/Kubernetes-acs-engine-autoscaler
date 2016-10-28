@@ -64,4 +64,4 @@ status:
   hostIP: 10.0.0.228
   phase: Running
   podIP: 10.240.112.166
-  startTime: 2016-07-14T06:46:25Z
+  startTime: "2016-07-14T06:46:25Z"

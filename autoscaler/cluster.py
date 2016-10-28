@@ -39,6 +39,7 @@ class ClusterNodeState(object):
     BUSY = 'busy'
     UNDER_UTILIZED_DRAINABLE = 'under-utilized-drainable'
     UNDER_UTILIZED_UNDRAINABLE = 'under-utilized-undrainable'
+    LAUNCH_HR_GRACE_PERIOD = 'launch-hr-grace-period'
 
 
 class Cluster(object):
@@ -52,6 +53,11 @@ class Cluster(object):
     # the utilization threshold under which to consider a node
     # under utilized and drainable
     UTIL_THRESHOLD = 0.3
+
+    # since we pay for the full hour, don't prematurely kill instances
+    # the number of minutes into the launch hour at which an instance
+    # is fine to kill
+    LAUNCH_HOUR_THRESHOLD = 60 * 50  # 50 minutes
 
     # HACK: before we're ready to favor bigger instances in all cases
     # just prioritize the ones that we're confident about
@@ -361,15 +367,17 @@ class Cluster(object):
         drainable = not undrainable_list
 
         maybe_inst = running_insts_map.get(node.instance_id)
-        instance_type = utils.selectors_to_hash(asg.selectors) if asg else None
-
         if maybe_inst:
             age = (datetime.datetime.now(maybe_inst.launch_time.tzinfo)
                    - maybe_inst.launch_time).seconds
+            launch_hour_offset = age % 3600
         else:
             age = None
 
         instance_type = utils.selectors_to_hash(asg.selectors) if asg else node.instance_type
+
+        type_spare_capacity = (instance_type and self.type_idle_threshold and
+                               idle_selector_hash[instance_type] < self.TYPE_IDLE_COUNT)
 
         if maybe_inst is None:
             state = ClusterNodeState.INSTANCE_TERMINATED
@@ -382,19 +390,22 @@ class Cluster(object):
                 state = ClusterNodeState.BUSY
         elif pending_list and not node.unschedulable:
             state = ClusterNodeState.POD_PENDING
-        elif ((not self.type_idle_threshold or idle_selector_hash[instance_type] >= self.TYPE_IDLE_COUNT)
-              and age <= self.idle_threshold) and not node.unschedulable:
+        elif launch_hour_offset < self.LAUNCH_HOUR_THRESHOLD and not node.unschedulable:
+            state = ClusterNodeState.LAUNCH_HR_GRACE_PERIOD
+        elif (not type_spare_capacity and age <= self.idle_threshold) and not node.unschedulable:
             # there is already an instance of this type sitting idle
             # so we use the regular idle threshold for the grace period
             state = ClusterNodeState.GRACE_PERIOD
-        elif (instance_type and idle_selector_hash[instance_type] < self.TYPE_IDLE_COUNT
-              and age <= self.type_idle_threshold) and not node.unschedulable:
+        elif (type_spare_capacity and age <= self.type_idle_threshold) and not node.unschedulable:
             # we don't have an instance of this type yet!
             # use the type idle threshold for the grace period
             # and mark the type as seen
             idle_selector_hash[instance_type] += 1
             state = ClusterNodeState.TYPE_GRACE_PERIOD
-        elif under_utilized and not node.unschedulable:
+        elif under_utilized and busy_list and not node.unschedulable:
+            # nodes that are under utilized (but not completely idle)
+            # have their own states to tell if we should drain them
+            # for better binpacking or not
             if drainable:
                 state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE
             else:
@@ -423,10 +434,12 @@ class Cluster(object):
             if capacity.is_possible(pod):
                 pods_to_schedule.setdefault(utils.selectors_to_hash(pod.selectors), []).append(pod)
             else:
+                recommended_capacity = capacity.max_capacity_for_selectors(pod.selectors)
                 logger.warn(
                     "Pending pod %s cannot fit %s. "
                     "Please check that requested resource amount is "
-                    "consistent with node selectors. Scheduling skipped." % (pod.name, pod.selectors))
+                    "consistent with node selectors (recommended max: %s). "
+                    "Scheduling skipped." % (pod.name, pod.selectors, recommended_capacity))
         return pods_to_schedule
 
     def scale(self, pods_to_schedule, all_nodes, asgs, running_insts_map):
@@ -508,7 +521,8 @@ class Cluster(object):
             if state in (ClusterNodeState.POD_PENDING, ClusterNodeState.BUSY,
                          ClusterNodeState.GRACE_PERIOD,
                          ClusterNodeState.TYPE_GRACE_PERIOD,
-                         ClusterNodeState.ASG_MIN_SIZE):
+                         ClusterNodeState.ASG_MIN_SIZE,
+                         ClusterNodeState.LAUNCH_HR_GRACE_PERIOD):
                 # do nothing
                 pass
             elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE:

@@ -47,6 +47,29 @@ def is_possible(pod):
     return False
 
 
+def max_capacity_for_selectors(selectors):
+    """
+    returns the maximum capacity that is possible for the given selectors
+    """
+    computing = selectors.get(COMPUTING_SELECTOR_KEY, 'false')
+    selector = selectors.get(DEFAULT_TYPE_SELECTOR_KEY)
+    class_ = selectors.get(DEFAULT_CLASS_SELECTOR_KEY)
+
+    unit_caps = RESOURCE_SPEC[computing]
+
+    # if an instance type was specified
+    if selector in unit_caps:
+        return unit_caps[selector]
+
+    max_capacity = None
+    for type_, resource in unit_caps.items():
+        if (not class_ or type_.startswith(class_)):
+            if not max_capacity or (resource - max_capacity).possible:
+                max_capacity = resource
+
+    return resource
+
+
 def get_unit_capacity(group):
     """
     returns the KubeResource provided by one unit in the

@@ -66,7 +66,6 @@ class KubePod(object):
         determines whether the pod is in a grace period for draining
         this prevents us from draining pods that are too new
         """
-        logger.debug('%s: %s %s', self, self.start_time, not self.start_time or (datetime.datetime.now(self.start_time.tzinfo) - self.start_time) < self._DRAIN_GRACE_PERIOD)
         return not self.start_time or (datetime.datetime.now(self.start_time.tzinfo) - self.start_time) < self._DRAIN_GRACE_PERIOD
 
     def is_drainable(self):
