@@ -13,7 +13,8 @@ import pykube
 import autoscaler.autoscaling_groups as autoscaling_groups
 import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
-from autoscaler.notification import notify_scale, notify_failed_to_scale
+from autoscaler.notification import (notify_scale, notify_failed_to_scale,
+                                     notify_invalid_pod_capacity)
 import autoscaler.utils as utils
 
 pykube.Pod.objects.namespace = None  # we are interested in all pods, incl. system ones
@@ -440,6 +441,7 @@ class Cluster(object):
                     "Please check that requested resource amount is "
                     "consistent with node selectors (recommended max: %s). "
                     "Scheduling skipped." % (pod.name, pod.selectors, recommended_capacity))
+                notify_invalid_pod_capacity(pod, recommended_capacity, hook=self.slack_hook)
         return pods_to_schedule
 
     def scale(self, pods_to_schedule, all_nodes, asgs, running_insts_map):

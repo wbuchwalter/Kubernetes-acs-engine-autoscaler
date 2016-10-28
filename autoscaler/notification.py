@@ -52,6 +52,27 @@ def notify_failed_to_scale(selectors_hash, pods, hook=None):
         logger.critical('Failed to SLACK: %s', e)
 
 
+def notify_invalid_pod_capacity(pod, recommended_capacity, hook=None):
+    if not hook:
+        logger.debug('SLACK_HOOK not configured.')
+        return
+
+    message = ("Pending pod {}/{} cannot fit {}. "
+               "Please check that requested resource amount is "
+               "consistent with node selectors (recommended max: {}). "
+               "Scheduling skipped.".format(pod.namespace, pod.name, json.dumps(pod.selectors), recommended_capacity))
+
+    try:
+        resp = requests.post(hook, json={
+            "text": message,
+            "username": "kubernetes-ec2-autoscaler",
+            "icon_emoji": ":rabbit:",
+        })
+        logger.debug('SLACK: %s', resp.text)
+    except requests.exceptions.ConnectionError as e:
+        logger.critical('Failed to SLACK: %s', e)
+
+
 def _generate_pod_string(pods):
     if len(pods) > 5:
         pods_string = '{}, and {} others'.format(
