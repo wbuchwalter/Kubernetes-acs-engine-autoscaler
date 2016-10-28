@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 
@@ -20,6 +21,8 @@ _CORDON_LABEL = 'openai/cordoned-by-autoscaler'
 
 
 class KubePod(object):
+    _DRAIN_GRACE_PERIOD = datetime.timedelta(seconds=60*60)
+
     def __init__(self, pod):
         self.original = pod
 
@@ -34,6 +37,7 @@ class KubePod(object):
         self.annotations = metadata.get('annotations', {})
         self.owner = self.labels.get('owner', None)
         self.creation_time = dateutil_parse(metadata['creationTimestamp'])
+        self.start_time = dateutil_parse(pod.obj['status']['startTime']) if 'startTime' in pod.obj['status'] else None
 
         # TODO: refactor
         requests = map(lambda c: c.get('resources', {}).get('requests', {}),
@@ -57,8 +61,16 @@ class KubePod(object):
     def is_critical(self):
         return utils.parse_bool_label(self.labels.get('openai/do-not-drain'))
 
+    def is_in_drain_grace_period(self):
+        """
+        determines whether the pod is in a grace period for draining
+        this prevents us from draining pods that are too new
+        """
+        logger.debug('%s: %s %s', self, self.start_time, not self.start_time or (datetime.datetime.now(self.start_time.tzinfo) - self.start_time) < self._DRAIN_GRACE_PERIOD)
+        return not self.start_time or (datetime.datetime.now(self.start_time.tzinfo) - self.start_time) < self._DRAIN_GRACE_PERIOD
+
     def is_drainable(self):
-        return self.is_replicated() and not self.is_critical()
+        return self.is_replicated() and not self.is_critical() and not self.is_in_drain_grace_period()
 
     def delete(self):
         logger.info('Deleting Pod %s/%s', self.namespace, self.name)
