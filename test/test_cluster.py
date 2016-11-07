@@ -10,6 +10,7 @@ import yaml
 
 from autoscaler.cluster import Cluster, ClusterNodeState
 from autoscaler.kube import KubePod, KubeNode
+from autoscaler.notification import Notifier
 import autoscaler.utils as utils
 
 
@@ -78,7 +79,7 @@ class TestCluster(unittest.TestCase):
             instance_init_time=60,
             type_idle_threshold=60,
             cluster_name='dummy-cluster',
-            slack_hook='',
+            notifier=Notifier(),
             dry_run=False
         )
 

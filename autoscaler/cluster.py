@@ -71,9 +71,9 @@ class Cluster(object):
 
     def __init__(self, regions, aws_access_key, aws_secret_key,
                  kubeconfig, idle_threshold, type_idle_threshold,
-                 instance_init_time, cluster_name,
-                 scale_up, maintainance,
-                 datadog_api_key, notifier,
+                 instance_init_time, cluster_name, notifier,
+                 scale_up=True, maintainance=True,
+                 datadog_api_key=None,
                  over_provision=5, dry_run=False):
         if kubeconfig:
             # for using locally
