@@ -13,8 +13,6 @@ import pykube
 import autoscaler.autoscaling_groups as autoscaling_groups
 import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
-from autoscaler.notification import (notify_scale, notify_failed_to_scale,
-                                     notify_invalid_pod_capacity)
 import autoscaler.utils as utils
 
 pykube.Pod.objects.namespace = None  # we are interested in all pods, incl. system ones
@@ -74,9 +72,9 @@ class Cluster(object):
     def __init__(self, regions, aws_access_key, aws_secret_key,
                  kubeconfig, idle_threshold, type_idle_threshold,
                  instance_init_time, cluster_name,
-                 over_provision=5,
-                 scale_up=True, maintainance=True,
-                 datadog_api_key=None, slack_hook=None, dry_run=False):
+                 scale_up, maintainance,
+                 datadog_api_key, notifier,
+                 over_provision=5, dry_run=False):
         if kubeconfig:
             # for using locally
             logger.debug('Using kubeconfig %s', kubeconfig)
@@ -106,7 +104,7 @@ class Cluster(object):
         self.scale_up = scale_up
         self.maintainance = maintainance
 
-        self.slack_hook = slack_hook
+        self.notifier = notifier
 
         if datadog_api_key:
             datadog.initialize(api_key=datadog_api_key)
@@ -223,9 +221,7 @@ class Cluster(object):
                 scaled = group.scale(new_capacity)
 
                 if scaled:
-                    notify_scale(group, units_requested,
-                                 pods,
-                                 self.slack_hook)
+                    self.notifier.notify_scale(group, units_requested, pods)
             else:
                 logger.info('[Dry run] Would have scaled up to %s', new_capacity)
 
@@ -241,7 +237,7 @@ class Cluster(object):
 
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
-            notify_failed_to_scale(selectors_hash, pods, hook=self.slack_hook)
+            self.notifier.notify_failed_to_scale(selectors_hash, pods)
 
     def get_running_instances_in_region(self, region, instance_ids):
         """
@@ -441,7 +437,7 @@ class Cluster(object):
                     "Please check that requested resource amount is "
                     "consistent with node selectors (recommended max: %s). "
                     "Scheduling skipped." % (pod.name, pod.selectors, recommended_capacity))
-                notify_invalid_pod_capacity(pod, recommended_capacity, hook=self.slack_hook)
+                self.notifier.notify_invalid_pod_capacity(pod, recommended_capacity)
         return pods_to_schedule
 
     def scale(self, pods_to_schedule, all_nodes, asgs, running_insts_map):

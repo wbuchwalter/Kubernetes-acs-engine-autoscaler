@@ -5,6 +5,7 @@ import time
 import click
 
 from autoscaler.cluster import Cluster
+from autoscaler.notification import Notifier
 
 logger = logging.getLogger('autoscaler')
 
@@ -34,6 +35,9 @@ DEBUG_LOGGING_MAP = {
 @click.option("--slack-hook", default=None, envvar='SLACK_HOOK',
               help='Slack webhook URL. If provided, post scaling messages '
                    'to Slack.')
+@click.option("--slack-bot-token", default=None, envvar='SLACK_BOT_TOKEN',
+              help='Slack bot token. If provided, post scaling messages '
+                   'to Slack users directly.')
 @click.option("--dry-run", is_flag=True)
 @click.option('--verbose', '-v',
               help="Sets the debug noise level, specify multiple times "
@@ -44,7 +48,7 @@ def main(cluster_name, regions, sleep, kubeconfig,
          aws_access_key, aws_secret_key, datadog_api_key,
          idle_threshold, type_idle_threshold,
          instance_init_time, no_scale, no_maintenance,
-         slack_hook, dry_run, verbose):
+         slack_hook, slack_bot_token, dry_run, verbose):
     logger_handler = logging.StreamHandler(sys.stderr)
     logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(logger_handler)
@@ -54,6 +58,7 @@ def main(cluster_name, regions, sleep, kubeconfig,
         logger.error("Missing AWS credentials. Please provide aws-access-key and aws-secret-key.")
         sys.exit(1)
 
+    notifier = Notifier(slack_hook, slack_bot_token)
     cluster = Cluster(aws_access_key=aws_access_key,
                       aws_secret_key=aws_secret_key,
                       regions=regions.split(','),
@@ -65,8 +70,8 @@ def main(cluster_name, regions, sleep, kubeconfig,
                       scale_up=not no_scale,
                       maintainance=not no_maintenance,
                       datadog_api_key=datadog_api_key,
-                      slack_hook=slack_hook,
-                      dry_run=dry_run
+                      notifier=notifier,
+                      dry_run=dry_run,
                       )
     backoff = sleep
     while True:

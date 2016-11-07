@@ -11,6 +11,7 @@ spec:
     metadata:
       labels:
         app: autoscaler
+        openai/do-not-drain: "true"
     spec:
       containers:
       - name: autoscaler
@@ -31,6 +32,11 @@ spec:
             secretKeyRef:
               name: autoscaler
               key: slack-hook
+        - name: SLACK_BOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: slack-bot-token
         - name: DATADOG_API_KEY
           valueFrom:
             secretKeyRef:
