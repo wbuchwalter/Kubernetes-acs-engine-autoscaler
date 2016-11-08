@@ -399,7 +399,7 @@ class Cluster(object):
             # and mark the type as seen
             idle_selector_hash[instance_type] += 1
             state = ClusterNodeState.TYPE_GRACE_PERIOD
-        elif under_utilized and busy_list and not node.unschedulable:
+        elif under_utilized and (busy_list or not node.unschedulable):
             # nodes that are under utilized (but not completely idle)
             # have their own states to tell if we should drain them
             # for better binpacking or not
