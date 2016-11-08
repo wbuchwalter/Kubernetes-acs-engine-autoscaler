@@ -327,4 +327,4 @@ class TestCluster(unittest.TestCase):
         self.assertEqual(len(response['AutoScalingGroups']), 1)
         self.assertEqual(response['AutoScalingGroups'][0]['DesiredCapacity'], 1)
         node.cordon.assert_called_once_with()
-        node.drain.assert_called_once_with(pods)
+        node.drain.assert_called_once_with(pods, notifier=mock.ANY)

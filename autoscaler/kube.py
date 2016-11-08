@@ -123,12 +123,14 @@ class KubeNode(object):
 
         return (None, '', None)
 
-    def drain(self, pods):
+    def drain(self, pods, notifier=None):
         for pod in pods:
             if pod.is_drainable():
                 pod.delete()
 
         logger.info("drained %s", self)
+        if notifier:
+            notifier.notify_drained_node(self, pods)
 
     def uncordon(self):
         if not utils.parse_bool_label(self.selectors.get(_CORDON_LABEL)):

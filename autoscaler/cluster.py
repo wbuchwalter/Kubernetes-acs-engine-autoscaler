@@ -529,7 +529,7 @@ class Cluster(object):
                         logger.warn('Cannot find ASG for node %s. Not cordoned.', node)
                     else:
                         node.cordon()
-                        node.drain(pods_by_node.get(node.name, []))
+                        node.drain(pods_by_node.get(node.name, []), notifier=self.notifier)
                 else:
                     logger.info('[Dry run] Would have drained and cordoned %s', node)
             elif state == ClusterNodeState.IDLE_SCHEDULABLE:
