@@ -26,6 +26,7 @@ DEBUG_LOGGING_MAP = {
                    'we assume that we\'re running on kubernetes.')
 @click.option("--idle-threshold", default=3600)
 @click.option("--type-idle-threshold", default=3600*24*7)
+@click.option("--over-provision", default=5)
 @click.option("--aws-access-key", default=None, envvar='AWS_ACCESS_KEY_ID')
 @click.option("--aws-secret-key", default=None, envvar='AWS_SECRET_ACCESS_KEY')
 @click.option("--datadog-api-key", default=None, envvar='DATADOG_API_KEY')
@@ -47,7 +48,7 @@ DEBUG_LOGGING_MAP = {
 def main(cluster_name, regions, sleep, kubeconfig,
          aws_access_key, aws_secret_key, datadog_api_key,
          idle_threshold, type_idle_threshold,
-         instance_init_time, no_scale, no_maintenance,
+         over_provision, instance_init_time, no_scale, no_maintenance,
          slack_hook, slack_bot_token, dry_run, verbose):
     logger_handler = logging.StreamHandler(sys.stderr)
     logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -69,6 +70,7 @@ def main(cluster_name, regions, sleep, kubeconfig,
                       cluster_name=cluster_name,
                       scale_up=not no_scale,
                       maintainance=not no_maintenance,
+                      over_provision=over_provision,
                       datadog_api_key=datadog_api_key,
                       notifier=notifier,
                       dry_run=dry_run,

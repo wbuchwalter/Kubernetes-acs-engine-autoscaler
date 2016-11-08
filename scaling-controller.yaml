@@ -57,6 +57,8 @@ spec:
             - -vvv
             - --type-idle-threshold
             - "0"
+            - --over-provision
+            - "1"
             - --sleep
             - "30"
         imagePullPolicy: Always
