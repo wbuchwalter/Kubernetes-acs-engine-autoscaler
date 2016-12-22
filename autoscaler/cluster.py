@@ -121,7 +121,12 @@ class Cluster(object):
         """
         logger.info("++++++++++++++ Running Scaling Loop ++++++++++++++++")
         try:
-            all_nodes = map(KubeNode, pykube.Node.objects(self.api))
+            pykube_nodes = pykube.Node.objects(self.api)
+            if not pykube_nodes:
+                logger.warn('Failed to list nodes. Please check kube configuration. Terminating scale loop.')
+                return False
+
+            all_nodes = map(KubeNode, pykube_nodes)
             managed_nodes = [node for node in all_nodes if node.is_managed()]
 
             running_insts_map = self.get_running_instances_map(managed_nodes)
