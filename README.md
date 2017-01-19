@@ -14,6 +14,10 @@ constraints such as node selectors
 AWS regions
 - Draining nodes on scale in: the autoscaler makes sure to not kill in-flight jobs
 
+## Architecture
+
+![Architecture Diagram](docs/kubernetes-ec2-autoscaler-2.png)
+
 ## Setup
 
 The autoscaler can be run anywhere as long as it can access the AWS
@@ -124,6 +128,8 @@ primary region and "us-east-1" as the secondary.
 - --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
 - --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
 - -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
+
+
 
 ## Developing
 
