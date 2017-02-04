@@ -15,12 +15,14 @@ import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
 import autoscaler.utils as utils
 
-pykube.Pod.objects.namespace = None  # we are interested in all pods, incl. system ones
+# we are interested in all pods, incl. system ones
+pykube.Pod.objects.namespace = None
 
 # HACK: https://github.com/kelproject/pykube/issues/29#issuecomment-230026930
 import backports.ssl_match_hostname
 # Monkey-patch match_hostname with backports's match_hostname, allowing for IP addresses
-# XXX: the exception that this might raise is backports.ssl_match_hostname.CertificateError
+# XXX: the exception that this might raise is
+# backports.ssl_match_hostname.CertificateError
 pykube.http.requests.packages.urllib3.connection.match_hostname = backports.ssl_match_hostname.match_hostname
 
 logger = logging.getLogger(__name__)
@@ -78,11 +80,13 @@ class Cluster(object):
         if kubeconfig:
             # for using locally
             logger.debug('Using kubeconfig %s', kubeconfig)
-            self.api = pykube.HTTPClient(pykube.KubeConfig.from_file(kubeconfig))
+            self.api = pykube.HTTPClient(
+                pykube.KubeConfig.from_file(kubeconfig))
         else:
             # for using on kube
             logger.debug('Using kube service account')
-            self.api = pykube.HTTPClient(pykube.KubeConfig.from_service_account())
+            self.api = pykube.HTTPClient(
+                pykube.KubeConfig.from_service_account())
 
         self._drained = {}
         self.session = boto3.session.Session(
@@ -92,7 +96,8 @@ class Cluster(object):
         self.autoscaling_groups = autoscaling_groups.AutoScalingGroups(
             session=self.session, regions=regions,
             cluster_name=cluster_name)
-        self.autoscaling_timeouts = autoscaling_groups.AutoScalingTimeouts(self.session)
+        self.autoscaling_timeouts = autoscaling_groups.AutoScalingTimeouts(
+            self.session)
 
         # config
         self.regions = regions
@@ -123,7 +128,8 @@ class Cluster(object):
         try:
             pykube_nodes = pykube.Node.objects(self.api)
             if not pykube_nodes:
-                logger.warn('Failed to list nodes. Please check kube configuration. Terminating scale loop.')
+                logger.warn(
+                    'Failed to list nodes. Please check kube configuration. Terminating scale loop.')
                 return False
 
             all_nodes = map(KubeNode, pykube_nodes)
@@ -149,12 +155,14 @@ class Cluster(object):
             pods_to_schedule = self.get_pods_to_schedule(pods)
 
             if self.scale_up:
-                logger.info("++++++++++++++ Scaling Up Begins ++++++++++++++++")
+                logger.info(
+                    "++++++++++++++ Scaling Up Begins ++++++++++++++++")
                 self.scale(
                     pods_to_schedule, all_nodes, asgs, running_insts_map)
                 logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
             if self.maintainance:
-                logger.info("++++++++++++++ Maintenance Begins ++++++++++++++++")
+                logger.info(
+                    "++++++++++++++ Maintenance Begins ++++++++++++++++")
                 self.maintain(
                     managed_nodes, running_insts_map,
                     pods_to_schedule, running_or_pending_assigned_pods, asgs)
@@ -199,11 +207,13 @@ class Cluster(object):
                         found_fit = True
                         break
                 if not found_fit:
-                    new_instance_resources.append(unit_capacity - pod.resources)
+                    new_instance_resources.append(
+                        unit_capacity - pod.resources)
                     assigned_pods.append([pod])
 
             # new desired # machines = # running nodes + # machines required to fit jobs that don't
-            #   fit on running nodes. This scaling is conservative but won't create starving
+            # fit on running nodes. This scaling is conservative but won't
+            # create starving
             units_needed = len(new_instance_resources)
             units_needed += self.over_provision
 
@@ -228,7 +238,8 @@ class Cluster(object):
                 if scaled:
                     self.notifier.notify_scale(group, units_requested, pods)
             else:
-                logger.info('[Dry run] Would have scaled up to %s', new_capacity)
+                logger.info(
+                    '[Dry run] Would have scaled up to %s', new_capacity)
 
             for i in range(min(len(assigned_pods), units_requested)):
                 for pod in assigned_pods[i]:
@@ -290,7 +301,8 @@ class Cluster(object):
         """
         instance_id_by_region = {}
         for node in nodes:
-            instance_id_by_region.setdefault(node.region, []).append(node.instance_id)
+            instance_id_by_region.setdefault(
+                node.region, []).append(node.instance_id)
 
         instance_map = {}
         for region, instance_ids in instance_id_by_region.items():
@@ -327,6 +339,7 @@ class Cluster(object):
         returns the groups sorted in order of where we should try to schedule
         things first. we currently try to prioritize in the following order:
         - region
+        - single-AZ groups over multi-AZ groups (for faster/cheaper network)
         - whether or not the group launches spot instances (prefer spot)
         - manually set _GROUP_PRIORITIES
         - group name
@@ -337,8 +350,12 @@ class Cluster(object):
                 region = self.regions.index(group.region)
             except ValueError:
                 pass
-            priority = self._GROUP_PRIORITIES.get(group.selectors.get('aws/type'), self._GROUP_DEFAULT_PRIORITY)
-            return (region, not group.is_spot, priority, group.name)
+            # Some ASGs are pinned to be in a single AZ. Sort them in front of
+            # multi-ASG groups that won't have this tag set.
+            pinned_to_az = group.selectors.get('aws/az', 'z')
+            priority = self._GROUP_PRIORITIES.get(
+                group.selectors.get('aws/type'), self._GROUP_DEFAULT_PRIORITY)
+            return (region, pinned_to_az, not group.is_spot, priority, group.name)
         return sorted(groups, key=sort_key)
 
     def get_node_state(self, node, asg, node_pods, pods_to_schedule,
@@ -365,7 +382,8 @@ class Cluster(object):
         busy_list = [p for p in node_pods if not p.is_mirrored()]
         undrainable_list = [p for p in node_pods if not p.is_drainable()]
         utilization = sum((p.resources for p in busy_list), KubeResource())
-        under_utilized = (self.UTIL_THRESHOLD * node.capacity - utilization).possible
+        under_utilized = (self.UTIL_THRESHOLD *
+                          node.capacity - utilization).possible
         drainable = not undrainable_list
 
         maybe_inst = running_insts_map.get(node.instance_id)
@@ -376,7 +394,8 @@ class Cluster(object):
         else:
             age = None
 
-        instance_type = utils.selectors_to_hash(asg.selectors) if asg else node.instance_type
+        instance_type = utils.selectors_to_hash(
+            asg.selectors) if asg else node.instance_type
 
         type_spare_capacity = (instance_type and self.type_idle_threshold and
                                idle_selector_hash[instance_type] < self.TYPE_IDLE_COUNT)
@@ -430,19 +449,23 @@ class Cluster(object):
             if p.status == KubePodStatus.PENDING and (not p.node_name)
         ]
 
-        # we only consider a pod to be schedulable if it's pending and unassigned and feasible
+        # we only consider a pod to be schedulable if it's pending and
+        # unassigned and feasible
         pods_to_schedule = {}
         for pod in pending_unassigned_pods:
             if capacity.is_possible(pod):
-                pods_to_schedule.setdefault(utils.selectors_to_hash(pod.selectors), []).append(pod)
+                pods_to_schedule.setdefault(
+                    utils.selectors_to_hash(pod.selectors), []).append(pod)
             else:
-                recommended_capacity = capacity.max_capacity_for_selectors(pod.selectors)
+                recommended_capacity = capacity.max_capacity_for_selectors(
+                    pod.selectors)
                 logger.warn(
                     "Pending pod %s cannot fit %s. "
                     "Please check that requested resource amount is "
                     "consistent with node selectors (recommended max: %s). "
                     "Scheduling skipped." % (pod.name, pod.selectors, recommended_capacity))
-                self.notifier.notify_invalid_pod_capacity(pod, recommended_capacity)
+                self.notifier.notify_invalid_pod_capacity(
+                    pod, recommended_capacity)
         return pods_to_schedule
 
     def scale(self, pods_to_schedule, all_nodes, asgs, running_insts_map):
@@ -517,7 +540,8 @@ class Cluster(object):
 
             logger.info("node: %-*s state: %s" % (75, node, state))
             self.stats.increment(
-                'kubernetes.custom.node.state.{}'.format(state.replace('-', '_')),
+                'kubernetes.custom.node.state.{}'.format(
+                    state.replace('-', '_')),
                 timestamp=stats_time)
 
             # state machine & why doesnt python have case?
@@ -531,16 +555,20 @@ class Cluster(object):
             elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE:
                 if not self.dry_run:
                     if not asg:
-                        logger.warn('Cannot find ASG for node %s. Not cordoned.', node)
+                        logger.warn(
+                            'Cannot find ASG for node %s. Not cordoned.', node)
                     else:
                         node.cordon()
-                        node.drain(pods_by_node.get(node.name, []), notifier=self.notifier)
+                        node.drain(pods_by_node.get(node.name, []),
+                                   notifier=self.notifier)
                 else:
-                    logger.info('[Dry run] Would have drained and cordoned %s', node)
+                    logger.info(
+                        '[Dry run] Would have drained and cordoned %s', node)
             elif state == ClusterNodeState.IDLE_SCHEDULABLE:
                 if not self.dry_run:
                     if not asg:
-                        logger.warn('Cannot find ASG for node %s. Not cordoned.', node)
+                        logger.warn(
+                            'Cannot find ASG for node %s. Not cordoned.', node)
                     else:
                         node.cordon()
                 else:
@@ -555,7 +583,8 @@ class Cluster(object):
                 # remove it from asg
                 if not self.dry_run:
                     if not asg:
-                        logger.warn('Cannot find ASG for node %s. Not terminated.', node)
+                        logger.warn(
+                            'Cannot find ASG for node %s. Not terminated.', node)
                     else:
                         asg.scale_node_in(node)
                 else:
@@ -571,12 +600,15 @@ class Cluster(object):
             else:
                 raise Exception("Unhandled state: {}".format(state))
 
-        logger.info("++++++++++++++ Maintaining Unmanaged Instances ++++++++++++++++")
+        logger.info(
+            "++++++++++++++ Maintaining Unmanaged Instances ++++++++++++++++")
         # these are instances that have been running for a while but it's not properly managed
-        #   i.e. not having registered to kube or not having proper meta data set
-        managed_instance_ids = set(node.instance_id for node in cached_managed_nodes)
+        # i.e. not having registered to kube or not having proper meta data set
+        managed_instance_ids = set(
+            node.instance_id for node in cached_managed_nodes)
         for asg in asgs:
-            unmanaged_instance_ids = list(asg.instance_ids - managed_instance_ids)
+            unmanaged_instance_ids = list(
+                asg.instance_ids - managed_instance_ids)
             if len(unmanaged_instance_ids) != 0:
                 unmanaged_running_insts = self.get_running_instances_in_region(
                     asg.region, unmanaged_instance_ids)
@@ -592,6 +624,8 @@ class Cluster(object):
                                 timestamp=stats_time)
                             # TODO: try to delete node from kube as well
                             # in the case where kubelet may have registered but node
-                            # labels have not been applied yet, so it appears unmanaged
+                            # labels have not been applied yet, so it appears
+                            # unmanaged
                         else:
-                            logger.info('[Dry run] Would have terminated unmanaged %s', inst)
+                            logger.info(
+                                '[Dry run] Would have terminated unmanaged %s', inst)
