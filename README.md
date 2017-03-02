@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/openai/kubernetes-ec2-autoscaler.svg?branch=master)](https://travis-ci.org/openai/kubernetes-ec2-autoscaler)
+
 # kubernetes-ec2-autoscaler
 
 kubernetes-ec2-autoscaler is a node-level autoscaler for [Kubernetes](http://kubernetes.io/)

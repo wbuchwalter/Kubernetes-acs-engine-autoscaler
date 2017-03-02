@@ -1,0 +1,29 @@
+clusters:
+  [
+    {
+      name: "test-cluster",
+      cluster:
+        {
+          server: "http://localhost:8080"
+        }
+    }
+  ]
+users:
+  [
+    {
+      name: "test-user",
+      user: {}
+    }
+  ]
+contexts:
+  [
+    {
+      name: "test-cluster",
+      context:
+        {
+          cluster: "test-cluster",
+          user: "test-user"
+        }
+    }
+  ]
+current-context: "test-cluster"

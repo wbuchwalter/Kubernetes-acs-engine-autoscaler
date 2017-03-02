@@ -36,7 +36,7 @@ class TestCluster(unittest.TestCase):
         for moto_mock in self.mocks:
             moto_mock.start()
 
-        client = boto3.client('autoscaling')
+        client = boto3.client('autoscaling', region_name='us-west-2')
         self.asg_client = client
 
         client.create_launch_configuration(
