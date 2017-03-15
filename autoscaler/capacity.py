@@ -25,6 +25,8 @@ COMPUTING_SELECTOR_KEY = 'openai/computing'
 
 
 def is_possible(pod):
+
+    ##REPLACE BY JUST CHECKING IF POD CPU <= CPU_PER_NODE
     """
     returns whether the pod is possible under the maximum allowable capacity
     """

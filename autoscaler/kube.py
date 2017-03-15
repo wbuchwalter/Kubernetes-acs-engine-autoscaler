@@ -96,7 +96,7 @@ class KubeNode(object):
 
         metadata = node.obj['metadata']
         self.name = metadata['name']
-        self.instance_id, self.region, self.instance_type = self._get_instance_data()
+        self.region, self.instance_type = self._get_instance_data()
         self.selectors = metadata['labels']
 
         self.capacity = KubeResource(**node.obj['status']['capacity'])
@@ -109,19 +109,15 @@ class KubeNode(object):
         returns a tuple (instance id, region, instance type)
         """
         labels = self.original.obj['metadata']['labels']
-        instance_type = labels.get('aws/type', labels.get('beta.kubernetes.io/instance-type'))
+        instance_type = labels.get('beta.kubernetes.io/instance-type')
+        region = labels.get('failure-domain.beta.kubernetes.io/region')
+        
+       #provider = self.original.obj['spec'].get('providerID', '')      
 
-        provider = self.original.obj['spec'].get('providerID', '')
-        if provider.startswith('aws://'):
-            az, instance_id = tuple(provider.split('/')[-2:])
-            return (instance_id, az[:-1], instance_type)
+        if instance_type and region:
+            return (region, instance_type)
 
-        if labels.get('aws/id') and labels.get('aws/az'):
-            instance_id = labels['aws/id']
-            region = labels['aws/az'][:-1]
-            return (instance_id, region, instance_type)
-
-        return (None, '', None)
+        return ('', None)
 
     def drain(self, pods, notifier=None):
         for pod in pods:
@@ -199,8 +195,7 @@ class KubeNode(object):
         return self.name == other.name
 
     def __str__(self):
-        return "{}: {} ({})".format(self.name, self.instance_id,
-                                    utils.selectors_to_hash(self.selectors))
+        return "{}: {} ({})".format(self.name, utils.selectors_to_hash(self.selectors))
 
 
 class KubeResource(object):

@@ -1,4 +1,4 @@
-FROM python:2.7-alpine
+FROM python:3-alpine
 
 RUN apk --update add --virtual build-dependencies \
       python-dev libffi-dev openssl-dev build-base && \
@@ -9,5 +9,11 @@ RUN apk --update add --virtual build-dependencies \
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
+RUN git clone https://github.com/Azure/azure-cli
+RUN python ./azure-cli/scripts/dev_setup.py
 COPY . /app/
 WORKDIR /app
+
+
+
+

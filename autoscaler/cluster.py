@@ -4,16 +4,18 @@ import logging
 import math
 import time
 
-import botocore
-import boto3
-import botocore.exceptions
 import datadog
 import pykube
 
-import autoscaler.autoscaling_groups as autoscaling_groups
+from azure.mgmt.compute import ComputeManagementClient
+from azure.cli.core.commands.client_factory import get_mgmt_service_client
+
+import azure_login
+from autoscaler.container_service import ContainerService
 import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
 import autoscaler.utils as utils
+
 
 # we are interested in all pods, incl. system ones
 pykube.Pod.objects.namespace = None
@@ -45,35 +47,20 @@ class ClusterNodeState(object):
 
 class Cluster(object):
 
-    # the number of instances per type that is allowed to be idle
+    # the number of instances that is allowed to be idle
     # this is for keeping some spare capacity around for faster
     # pod scheduling, instead of keeping the cluster at capacity
     # and having to spin up nodes for every job submission
-    TYPE_IDLE_COUNT = 5
+    IDLE_COUNT = 5
 
     # the utilization threshold under which to consider a node
     # under utilized and drainable
     UTIL_THRESHOLD = 0.3
 
-    # since we pay for the full hour, don't prematurely kill instances
-    # the number of minutes into the launch hour at which an instance
-    # is fine to kill
-    LAUNCH_HOUR_THRESHOLD = 60 * 50  # 50 minutes
 
-    # HACK: before we're ready to favor bigger instances in all cases
-    # just prioritize the ones that we're confident about
-    _GROUP_DEFAULT_PRIORITY = 10
-    _GROUP_PRIORITIES = {
-        'g2.8xlarge': 2,
-        'm4.xlarge': 0,
-        'm4.2xlarge': 0,
-        'm4.4xlarge': 0,
-        'm4.10xlarge': 0
-    }
-
-    def __init__(self, regions, aws_access_key, aws_secret_key,
-                 kubeconfig, idle_threshold, type_idle_threshold,
-                 instance_init_time, cluster_name, notifier,
+    def __init__(self, service_principal_app_id, service_principal_secret, service_principal_tenant_id,
+                 kubeconfig, idle_threshold, reserve_idle_threshold,
+                 instance_init_time, container_service_name, resource_group, notifier,
                  scale_up=True, maintainance=True,
                  datadog_api_key=None,
                  over_provision=5, dry_run=False):
@@ -89,21 +76,26 @@ class Cluster(object):
                 pykube.KubeConfig.from_service_account())
 
         self._drained = {}
-        self.session = boto3.session.Session(
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-            region_name=regions[0])  # provide a default region
-        self.autoscaling_groups = autoscaling_groups.AutoScalingGroups(
-            session=self.session, regions=regions,
-            cluster_name=cluster_name)
-        self.autoscaling_timeouts = autoscaling_groups.AutoScalingTimeouts(
-            self.session)
+
+        azure_login.login(
+            service_principal_app_id,
+            service_principal_secret,
+            service_principal,tenant)       
+         
+
+        #  Create container service
+        self.container_service = ContainerService(
+            get_mgmt_service_client(ComputeManagementClient).container_services, 
+            container_service_name, 
+            resource_group)
+
+        # self.autoscaling_timeouts = autoscaling_groups.AutoScalingTimeouts(
+        #     self.session)
 
         # config
-        self.regions = regions
         self.idle_threshold = idle_threshold
         self.instance_init_time = instance_init_time
-        self.type_idle_threshold = type_idle_threshold
+        self.reserve_idle_threshold = reserve_idle_threshold
         self.over_provision = over_provision
 
         self.scale_up = scale_up
@@ -133,9 +125,9 @@ class Cluster(object):
                 return False
 
             all_nodes = map(KubeNode, pykube_nodes)
-            managed_nodes = [node for node in all_nodes if node.is_managed()]
 
-            running_insts_map = self.get_running_instances_map(managed_nodes)
+            #TODO: What is a managed node in this context?
+            managed_nodes = [node for node in all_nodes if node.is_managed()]            
 
             pods = map(KubePod, pykube.Pod.objects(self.api))
 
@@ -150,7 +142,7 @@ class Cluster(object):
                     if pod.node_name == node.name:
                         node.count_pod(pod)
 
-            asgs = self.autoscaling_groups.get_all_groups(all_nodes)
+            #asgs = self.autoscaling_groups.get_all_groups(all_nodes)
 
             pods_to_schedule = self.get_pods_to_schedule(pods)
 
@@ -158,14 +150,14 @@ class Cluster(object):
                 logger.info(
                     "++++++++++++++ Scaling Up Begins ++++++++++++++++")
                 self.scale(
-                    pods_to_schedule, all_nodes, asgs, running_insts_map)
+                    pods_to_schedule, all_nodes, self.container_service)
                 logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
             if self.maintainance:
                 logger.info(
                     "++++++++++++++ Maintenance Begins ++++++++++++++++")
                 self.maintain(
-                    managed_nodes, running_insts_map,
-                    pods_to_schedule, running_or_pending_assigned_pods, asgs)
+                    managed_nodes,
+                    pods_to_schedule, running_or_pending_assigned_pods, self.container_service)
                 logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
 
             return True
@@ -173,11 +165,14 @@ class Cluster(object):
             logger.warn(e)
             return False
 
-    def fulfill_pending(self, asgs, selectors_hash, pods):
+    def fulfill_pending(self, container_service, unit_capacity, selectors_hash, pods):
         """
         selectors_hash - string repr of selectors
         pods - list of KubePods that are pending
         """
+
+        
+
         logger.info(
             "========= Scaling for %s ========", selectors_hash)
         logger.debug("pending: %s", pods[:5])
@@ -185,259 +180,79 @@ class Cluster(object):
         accounted_pods = dict((p, False) for p in pods)
         num_unaccounted = len(pods)
 
-        groups = utils.get_groups_for_hash(asgs, selectors_hash)
+        new_instance_resources = []
+        assigned_pods = []
+        for pod, acc in accounted_pods.items():
+            if acc or not (unit_capacity - pod.resources).possible:
+                continue
 
-        groups = self._prioritize_groups(groups)
+            found_fit = False
+            for i, instance in enumerate(new_instance_resources):
+                if (instance - pod.resources).possible:
+                    new_instance_resources[i] = instance - pod.resources
+                    assigned_pods[i].append(pod)
+                    found_fit = True
+                    break
+            if not found_fit:
+                new_instance_resources.append(
+                    unit_capacity - pod.resources)
+                assigned_pods.append([pod])
 
-        for group in groups:
-            logger.debug("group: %s", group)
+        # new desired # machines = # running nodes + # machines required to fit jobs that don't
+        # fit on running nodes. This scaling is conservative but won't
+        # create starving
+        units_needed = len(new_instance_resources)
+        units_needed += self.over_provision
+        
+        # if self.autoscaling_timeouts.is_timed_out(group):
+        #         # if a machine is timed out, it cannot be scaled further
+        #         # just account for its current capacity (it may have more
+        #         # being launched, but we're being conservative)
+        #         unavailable_units = max(
+        #             0, units_needed - (group.desired_capacity - group.actual_capacity))
+        #     else:
+        unavailable_units = max(
+            0, units_needed - (container_service.max_size - container_service.actual_capacity))
 
-            unit_capacity = capacity.get_unit_capacity(group)
-            new_instance_resources = []
-            assigned_pods = []
-            for pod, acc in accounted_pods.items():
-                if acc or not (unit_capacity - pod.resources).possible:
-                    continue
+        units_requested = units_needed - unavailable_units
 
-                found_fit = False
-                for i, instance in enumerate(new_instance_resources):
-                    if (instance - pod.resources).possible:
-                        new_instance_resources[i] = instance - pod.resources
-                        assigned_pods[i].append(pod)
-                        found_fit = True
-                        break
-                if not found_fit:
-                    new_instance_resources.append(
-                        unit_capacity - pod.resources)
-                    assigned_pods.append([pod])
+        logger.debug("units_needed: %s", units_needed)
+        logger.debug("units_requested: %s", units_requested)
 
-            # new desired # machines = # running nodes + # machines required to fit jobs that don't
-            # fit on running nodes. This scaling is conservative but won't
-            # create starving
-            units_needed = len(new_instance_resources)
-            units_needed += self.over_provision
+        new_capacity = container_service.actual_capacity + units_requested
+        if not self.dry_run:
+            scaled = container_service.scale(new_capacity)
+            
+            #TODO: reimplement notifications if needed
+            # if scaled:
+            #     self.notifier.notify_scale(container_service, units_requested, pods)
+        else:
+            logger.info(
+                '[Dry run] Would have scaled up to %s', new_capacity)
 
-            if self.autoscaling_timeouts.is_timed_out(group):
-                # if a machine is timed out, it cannot be scaled further
-                # just account for its current capacity (it may have more
-                # being launched, but we're being conservative)
-                unavailable_units = max(
-                    0, units_needed - (group.desired_capacity - group.actual_capacity))
-            else:
-                unavailable_units = max(
-                    0, units_needed - (group.max_size - group.actual_capacity))
-            units_requested = units_needed - unavailable_units
+        for i in range(min(len(assigned_pods), units_requested)):
+            for pod in assigned_pods[i]:
+                accounted_pods[pod] = True
+                num_unaccounted -= 1
 
-            logger.debug("units_needed: %s", units_needed)
-            logger.debug("units_requested: %s", units_requested)
+        logger.debug("remaining pending: %s", num_unaccounted)
 
-            new_capacity = group.actual_capacity + units_requested
-            if not self.dry_run:
-                scaled = group.scale(new_capacity)
-
-                if scaled:
-                    self.notifier.notify_scale(group, units_requested, pods)
-            else:
-                logger.info(
-                    '[Dry run] Would have scaled up to %s', new_capacity)
-
-            for i in range(min(len(assigned_pods), units_requested)):
-                for pod in assigned_pods[i]:
-                    accounted_pods[pod] = True
-                    num_unaccounted -= 1
-
-            logger.debug("remining pending: %s", num_unaccounted)
-
-            if not num_unaccounted:
-                break
+        if not num_unaccounted:
+            break
 
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
-            self.notifier.notify_failed_to_scale(selectors_hash, pods)
+            # self.notifier.notify_failed_to_scale(selectors_hash, pods)
 
-    def get_running_instances_in_region(self, region, instance_ids):
-        """
-        a generator for getting ec2.Instance objects given a list of
-        instance IDs.
-        """
-        yielded_ids = set()
-        try:
-            running_insts = (self.session
-                             .resource('ec2', region_name=region)
-                             .instances
-                             .filter(
-                                 InstanceIds=instance_ids,
-                                 Filters=[{
-                                     'Name': "instance-state-name",
-                                     'Values': ["running"]}]
-                             ))
-            # we have to go through each instance to make sure
-            # they actually exist and handle errors otherwise
-            # boto collections do not always call DescribeInstance
-            # when returning from filter, so it could error during
-            # iteration
-            for inst in running_insts:
-                yield inst
-                yielded_ids.add(inst.id)
-        except botocore.exceptions.ClientError as e:
-            logger.debug('Caught %s', e)
-            if str(e).find("InvalidInstanceID.NotFound") == -1:
-                raise e
-            elif len(instance_ids) == 1:
-                return
-            else:
-                # this should hopefully happen rarely so we resort to slow methods to
-                # handle this case
-                for instance_id in instance_ids:
-                    if instance_id in yielded_ids:
-                        continue
-                    for inst in self.get_running_instances_in_region(region, [instance_id]):
-                        yield inst
+    def get_running_instances_map(self, nodes):      
+        # In the AWS version, this func is used to get which nodes are alive
+        # Todo: reimplement similar functionality for azure
+        return NotImplementedError()
 
-    def get_running_instances_map(self, nodes):
-        """
-        given a list of KubeNode's, return a map of
-        instance_id -> ec2.Instance object
-        """
-        instance_id_by_region = {}
-        for node in nodes:
-            instance_id_by_region.setdefault(
-                node.region, []).append(node.instance_id)
-
-        instance_map = {}
-        for region, instance_ids in instance_id_by_region.items():
-            # note that this assumes that all instances have a valid region
-            # the regions referenced by the nodes may also be outside of the
-            # list of regions provided by the user
-            # this should be ok because they will just end up being nodes
-            # unmanaged by autoscaling groups we know about
-            region_instances = self.get_running_instances_in_region(
-                region, instance_ids)
-            instance_map.update((inst.id, inst) for inst in region_instances)
-
-        return instance_map
-
-    def _get_required_capacity(self, requested, group):
-        """
-        returns the number of nodes within an autoscaling group that should
-        be provisioned to fit the requested amount of KubeResource.
-
-        TODO: bin packing would probably be better?
-
-        requested - KubeResource
-        group - AutoScalingGroup
-        """
-        unit_capacity = capacity.get_unit_capacity(group)
-        return max(
-            # (peter) should 0.8 be configurable?
-            int(math.ceil(requested.get(field, 0.0) / unit_capacity.get(field, 1.0)))
-            for field in ('cpu', 'memory', 'pods')
-        )
-
-    def _prioritize_groups(self, groups):
-        """
-        returns the groups sorted in order of where we should try to schedule
-        things first. we currently try to prioritize in the following order:
-        - region
-        - single-AZ groups over multi-AZ groups (for faster/cheaper network)
-        - whether or not the group launches spot instances (prefer spot)
-        - manually set _GROUP_PRIORITIES
-        - group name
-        """
-        def sort_key(group):
-            region = self._GROUP_DEFAULT_PRIORITY
-            try:
-                region = self.regions.index(group.region)
-            except ValueError:
-                pass
-            # Some ASGs are pinned to be in a single AZ. Sort them in front of
-            # multi-ASG groups that won't have this tag set.
-            pinned_to_az = group.selectors.get('aws/az', 'z')
-            priority = self._GROUP_PRIORITIES.get(
-                group.selectors.get('aws/type'), self._GROUP_DEFAULT_PRIORITY)
-            return (region, pinned_to_az, not group.is_spot, priority, group.name)
-        return sorted(groups, key=sort_key)
 
     def get_node_state(self, node, asg, node_pods, pods_to_schedule,
                        running_insts_map, idle_selector_hash):
-        """
-        returns the ClusterNodeState for the given node
-
-        params:
-        node - KubeNode object
-        asg - AutoScalingGroup object that this node belongs in. can be None.
-        node_pods - list of KubePods assigned to this node
-        pods_to_schedule - list of all pending pods
-        running_inst_map - map of all (instance_id -> ec2.Instance object)
-        idle_selector_hash - current map of idle nodes by type. may be modified.
-        """
-        pending_list = []
-        for pods in pods_to_schedule.values():
-            for pod in pods:
-                if node.is_match(pod):
-                    pending_list.append(pod)
-        # we consider a node to be busy if it's running any non-DaemonSet pods
-        # TODO: we can be a bit more aggressive in killing pods that are
-        # replicated
-        busy_list = [p for p in node_pods if not p.is_mirrored()]
-        undrainable_list = [p for p in node_pods if not p.is_drainable()]
-        utilization = sum((p.resources for p in busy_list), KubeResource())
-        under_utilized = (self.UTIL_THRESHOLD *
-                          node.capacity - utilization).possible
-        drainable = not undrainable_list
-
-        maybe_inst = running_insts_map.get(node.instance_id)
-        if maybe_inst:
-            age = (datetime.datetime.now(maybe_inst.launch_time.tzinfo)
-                   - maybe_inst.launch_time).seconds
-            launch_hour_offset = age % 3600
-        else:
-            age = None
-
-        instance_type = utils.selectors_to_hash(
-            asg.selectors) if asg else node.instance_type
-
-        type_spare_capacity = (instance_type and self.type_idle_threshold and
-                               idle_selector_hash[instance_type] < self.TYPE_IDLE_COUNT)
-
-        if maybe_inst is None:
-            state = ClusterNodeState.INSTANCE_TERMINATED
-        elif asg and len(asg.nodes) <= asg.min_size:
-            state = ClusterNodeState.ASG_MIN_SIZE
-        elif busy_list and not under_utilized:
-            if node.unschedulable:
-                state = ClusterNodeState.BUSY_UNSCHEDULABLE
-            else:
-                state = ClusterNodeState.BUSY
-        elif pending_list and not node.unschedulable:
-            state = ClusterNodeState.POD_PENDING
-        elif launch_hour_offset < self.LAUNCH_HOUR_THRESHOLD and not node.unschedulable:
-            state = ClusterNodeState.LAUNCH_HR_GRACE_PERIOD
-        elif (not type_spare_capacity and age <= self.idle_threshold) and not node.unschedulable:
-            # there is already an instance of this type sitting idle
-            # so we use the regular idle threshold for the grace period
-            state = ClusterNodeState.GRACE_PERIOD
-        elif (type_spare_capacity and age <= self.type_idle_threshold) and not node.unschedulable:
-            # we don't have an instance of this type yet!
-            # use the type idle threshold for the grace period
-            # and mark the type as seen
-            idle_selector_hash[instance_type] += 1
-            state = ClusterNodeState.TYPE_GRACE_PERIOD
-        elif under_utilized and (busy_list or not node.unschedulable):
-            # nodes that are under utilized (but not completely idle)
-            # have their own states to tell if we should drain them
-            # for better binpacking or not
-            if drainable:
-                state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE
-            else:
-                state = ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE
-        else:
-            if node.unschedulable:
-                state = ClusterNodeState.IDLE_UNSCHEDULABLE
-            else:
-                state = ClusterNodeState.IDLE_SCHEDULABLE
-
-        return state
+        #TODO
 
     def get_pods_to_schedule(self, pods):
         """
@@ -468,21 +283,19 @@ class Cluster(object):
                     pod, recommended_capacity)
         return pods_to_schedule
 
-    def scale(self, pods_to_schedule, all_nodes, asgs, running_insts_map):
+    def scale(self, pods_to_schedule, all_nodes, container_service):
         """
         scale up logic
         """
+        #All the nodes in ACS should be of a single type, so take the capacity of any node as reference
+        unit_capacity = all_nodes[:1].capacity
+
+
         self.autoscaling_timeouts.refresh_timeouts(asgs, dry_run=self.dry_run)
 
-        cached_live_nodes = []
-        for node in all_nodes:
-            # either we know the physical node behind it and know it's alive
-            # or we don't know it and assume it's alive
-            if (node.instance_id and node.instance_id in running_insts_map) \
-                    or (not node.is_managed()):
-                cached_live_nodes.append(node)
-
-        # asg name -> pending KubePods
+        #Assume all nodes are alive for now. We will need to implement a way to verify that later on, maybe when VMSS are live?
+        cached_live_nodes = all_nodes
+       
         pending_pods = {}
 
         # for each pending & unassigned job, try to fit them on current machines or count requested
@@ -495,8 +308,6 @@ class Cluster(object):
                         fitting = node
                         break
                 if fitting is None:
-                    # because a pod may be able to fit in multiple groups
-                    # pick a group now
                     pending_pods.setdefault(selectors_hash, []).append(pod)
                     logger.info(
                         "{pod} is pending ({selectors_hash})".format(
@@ -506,11 +317,12 @@ class Cluster(object):
                     logger.info("{pod} fits on {node}".format(pod=pod,
                                                               node=fitting))
 
-        # scale each node type to reach the new capacity
+        # scale nodes to reach the new capacity
+        # For now we don't need all of this. We could just scale regardless of selectors in a single batch, since we don't support multiple instance type
+        # but keeping the logic in place for future improvments of the platform
         for selectors_hash, pending in pending_pods.items():
-            self.fulfill_pending(asgs, selectors_hash, pending)
+            self.fulfill_pending(container_service, unit_capacity, selectors_hash, pending)
 
-        # TODO: make sure desired capacities of untouched groups are consistent
 
     def maintain(self, cached_managed_nodes, running_insts_map,
                  pods_to_schedule, running_or_pending_assigned_pods, asgs):
@@ -520,6 +332,15 @@ class Cluster(object):
         - determines if there are bad nodes in ASGs (did not spin up under
           `instance_init_time` seconds)
         """
+
+        # In our case we cannot decide which node to terminate, we can only terminate the last one.
+        # So our maintenance is easy: is the last node underutilized? If yes cordon, drain then kill it.
+        # Otherwise we keep everything.
+        # If the LB is configured for round-robbin and there is no sticky sessions, long running sessions etc... it should not pose
+        # too much issues. Otherwise this solution will not work and will need to wait for k8s to be supported by VMSS.
+        # We also have to assume that there is no undrainable and critical pod, otherwise we cannot scale down at all in many cases
+
+
         logger.info("++++++++++++++ Maintaining Managed Nodes ++++++++++++++++")
 
         # for each type of instance, we keep one around for longer
@@ -568,7 +389,7 @@ class Cluster(object):
                 if not self.dry_run:
                     if not asg:
                         logger.warn(
-                            'Cannot find ASG for node %s. Not cordoned.', node)
+                            'Cannot fLAUNCH_HOUR_THRESHOLDind ASG for node %s. Not cordoned.', node)
                     else:
                         node.cordon()
                 else:
