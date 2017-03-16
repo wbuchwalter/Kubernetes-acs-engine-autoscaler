@@ -1,20 +1,13 @@
 [![Build Status](https://travis-ci.org/openai/kubernetes-ec2-autoscaler.svg?branch=master)](https://travis-ci.org/openai/kubernetes-ec2-autoscaler)
 
-# kubernetes-ec2-autoscaler
+# kubernetes-acs-autoscaler
 
-kubernetes-ec2-autoscaler is a node-level autoscaler for [Kubernetes](http://kubernetes.io/)
-on AWS EC2 that is designed for batch jobs. Kubernetes is a container orchestration framework
-that schedules Docker containers on a cluster, and kubernetes-ec2-autoscaler can scale
-[AWS Auto Scaling Groups](http://docs.aws.amazon.com/autoscaling/latest/userguide/WhatIsAutoScaling.html)
-based on the pending job queue.
+kubernetes-acs-autoscaler is a node-level autoscaler for [Kubernetes](http://kubernetes.io/)
+on Azure Container Services that is designed for batch jobs. Kubernetes is a container orchestration framework
+that schedules Docker containers on a cluster, and kubernetes-acs-autoscaler can scale based on the pending job queue.
 
-The key features are:
-- Scaling on flexible resource requirements: the autoscaler determines the resources it needs
-from the pending job queue, and scales up the appropriate ASGs while respecting job
-constraints such as node selectors
-- Multi-Region Support: the autoscaler can detect scaling errors and overflow to secondary
-AWS regions
-- Draining nodes on scale in: the autoscaler makes sure to not kill in-flight jobs
+
+### This project is a fork of [OpenAI](https://openai.com/blog/)'s [Kubernetes-ec2-autoscaler](https://github.com/openai/kubernetes-ec2-autoscaler)
 
 ## Architecture
 
@@ -22,56 +15,14 @@ AWS regions
 
 ## Setup
 
-The autoscaler can be run anywhere as long as it can access the AWS
+The autoscaler can be run anywhere as long as it can access the Azure
 and Kubernetes APIs, but the recommended way is to set it up as a
 Kubernetes Pod.
-
-### Auto Scaling Groups
-Your Auto Scaling Groups must be tagged with `KubernetesCluster`, whose value should be passed
-to the flag `--cluster-name`, and `Role` with a value of `minion`. If you use `kube-up` to set
-up your cluster, those will be set automatically.
-
-You must also enable [Instance Protection](http://docs.aws.amazon.com/autoscaling/latest/userguide/as-instance-termination.html#instance-protection) on all your Auto Scaling Groups, since instance
-termination will be handled by the kubernetes-ec2-autoscaler.
-
-### IAM User
-It is highly recommended that you make an [AWS IAM user](http://docs.aws.amazon.com/IAM/latest/UserGuide/id_users.html)
-for this service, instead of using your worker's instance profile,
-since it will need permissions to terminate instances.
-Here is the minimal IAM policy required by the autoscaler:
-```
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "autoscaling:SetDesiredCapacity",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
-        "autoscaling:DescribeAutoScalingGroups",
-        "autoscaling:DescribeScalingActivities",
-        "autoscaling:DescribeLaunchConfigurations"
-      ],
-      "Resource": [
-        "*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeInstances"
-      ],
-      "Resource": [
-        "*"
-      ]
-    }
-  ]
-}
-```
 
 ### Credentials
 Once you have an IAM user, you will need its [access key](http://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html).
 The best way to use the access key in Kubernetes is with a [secret](http://kubernetes.io/docs/user-guide/secrets/).
+
 Here is a sample format for `secret.yaml`:
 ```
 apiVersion: v1

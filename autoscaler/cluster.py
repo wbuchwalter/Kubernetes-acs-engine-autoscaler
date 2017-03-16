@@ -77,6 +77,10 @@ class Cluster(object):
 
         self._drained = {}
 
+        #Container Service instance type. Currently ACS only supports one agent pool 
+        #so all nodes are of the same type
+        self.cs_instance_type = {}
+
         azure_login.login(
             service_principal_app_id,
             service_principal_secret,
@@ -125,6 +129,7 @@ class Cluster(object):
                 return False
 
             all_nodes = map(KubeNode, pykube_nodes)
+            self.cs_instance_type = all_nodes[:1].instance_type
 
             #TODO: What is a managed node in this context?
             managed_nodes = [node for node in all_nodes if node.is_managed()]            
@@ -242,17 +247,87 @@ class Cluster(object):
 
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
-            # self.notifier.notify_failed_to_scale(selectors_hash, pods)
-
-    def get_running_instances_map(self, nodes):      
-        # In the AWS version, this func is used to get which nodes are alive
-        # Todo: reimplement similar functionality for azure
-        return NotImplementedError()
-
+            # self.notifier.notify_failed_to_scale(selectors_hash, pods) 
 
     def get_node_state(self, node, asg, node_pods, pods_to_schedule,
                        running_insts_map, idle_selector_hash):
-        #TODO
+        """
+        returns the ClusterNodeState for the given node
+        params:
+        node - KubeNode object
+        asg - AutoScalingGroup object that this node belongs in. can be None.
+        node_pods - list of KubePods assigned to this node
+        pods_to_schedule - list of all pending pods
+        running_inst_map - map of all (instance_id -> ec2.Instance object)
+        idle_selector_hash - current map of idle nodes by type. may be modified.
+        """
+        pending_list = []
+        for pods in pods_to_schedule.values():
+            for pod in pods:
+                if node.is_match(pod):
+                    pending_list.append(pod)
+        # we consider a node to be busy if it's running any non-DaemonSet pods
+        # TODO: we can be a bit more aggressive in killing pods that are
+        # replicated
+        busy_list = [p for p in node_pods if not p.is_mirrored()]
+        undrainable_list = [p for p in node_pods if not p.is_drainable()]
+        utilization = sum((p.resources for p in busy_list), KubeResource())
+        under_utilized = (self.UTIL_THRESHOLD *
+                          node.capacity - utilization).possible
+        drainable = not undrainable_list
+
+        # maybe_inst = running_insts_map.get(node.instance_id)
+        # if maybe_inst:
+        #     age = (datetime.datetime.now(maybe_inst.launch_time.tzinfo)
+        #            - maybe_inst.launch_time).seconds
+        #     launch_hour_offset = age % 3600
+        # else:
+        #      = None
+
+        # instance_type = utils.selectors_to_hash(
+        #     asg.selectors) if asg else node.instance_type
+
+        spare_capacity = (instance_type and self.type_idle_threshold and
+                               idle_selector_hash[instance_type] < self.TYPE_IDLE_COUNT)
+
+        if maybe_inst is None:
+            state = ClusterNodeState.INSTANCE_TERMINATED
+        elif asg and len(asg.nodes) <= asg.min_size:
+            state = ClusterNodeState.ASG_MIN_SIZE
+        elif busy_list and not under_utilized:
+            if node.unschedulable:
+                state = ClusterNodeState.BUSY_UNSCHEDULABLE
+            else:
+                state = ClusterNodeState.BUSY
+        elif pending_list and not node.unschedulable:
+            state = ClusterNodeState.POD_PENDING
+        # elif launch_hour_offset < self.LAUNCH_HOUR_THRESHOLD and not node.unschedulable:
+        #     state = ClusterNodeState.LAUNCH_HR_GRACE_PERIOD
+        elif (not type_spare_capacity and age <= self.idle_threshold) and not node.unschedulable:
+            # there is already an instance of this type sitting idle
+            # so we use the regular idle threshold for the grace period
+            state = ClusterNodeState.GRACE_PERIOD
+        elif (type_spare_capacity and age <= self.type_idle_threshold) and not node.unschedulable:
+            # we don't have an instance of this type yet!
+            # use the type idle threshold for the grace period
+            # and mark the type as seen
+            idle_selector_hash[instance_type] += 1
+            state = ClusterNodeState.TYPE_GRACE_PERIOD
+        elif under_utilized and (busy_list or not node.unschedulable):
+            # nodes that are under utilized (but not completely idle)
+            # have their own states to tell if we should drain them
+            # for better binpacking or not
+            if drainable:
+                state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE
+            else:
+                state = ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE
+        else:
+            if node.unschedulable:
+                state = ClusterNodeState.IDLE_UNSCHEDULABLE
+            else:
+                state = ClusterNodeState.IDLE_SCHEDULABLE
+
+        return state
 
     def get_pods_to_schedule(self, pods):
         """
@@ -268,19 +343,17 @@ class Cluster(object):
         # unassigned and feasible
         pods_to_schedule = {}
         for pod in pending_unassigned_pods:
-            if capacity.is_possible(pod):
+            if capacity.is_possible(pod, self.cs_instance_type):
                 pods_to_schedule.setdefault(
                     utils.selectors_to_hash(pod.selectors), []).append(pod)
-            else:
-                recommended_capacity = capacity.max_capacity_for_selectors(
-                    pod.selectors)
+            else:                
                 logger.warn(
                     "Pending pod %s cannot fit %s. "
                     "Please check that requested resource amount is "
-                    "consistent with node selectors (recommended max: %s). "
-                    "Scheduling skipped." % (pod.name, pod.selectors, recommended_capacity))
-                self.notifier.notify_invalid_pod_capacity(
-                    pod, recommended_capacity)
+                    "consistent with node size."
+                    "Scheduling skipped." % (pod.name, pod.selectors)
+                # self.notifier.notify_invalid_pod_capacity(
+                #     pod, recommended_capacity)
         return pods_to_schedule
 
     def scale(self, pods_to_schedule, all_nodes, container_service):
