@@ -53,7 +53,7 @@ DEBUG_LOGGING_MAP = {
               count=True)
 def main(container_service_name, resource_group, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret, service_principal_tenant_id,
-         cpu_per_node, datadog_api_key,idle_threshold, reserve_idle_threshold,
+         datadog_api_key,idle_threshold, reserve_idle_threshold,
          over_provision, instance_init_time, no_scale, no_maintenance,
          slack_hook, slack_bot_token, dry_run, verbose):
     logger_handler = logging.StreamHandler(sys.stderr)

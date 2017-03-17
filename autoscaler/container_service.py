@@ -2,11 +2,11 @@
 
 class ContainerService(object):
 
-  def __init__(acs_client, container_service_name, resource_group):
+  def __init__(self, acs_client, container_service_name, resource_group):
     self.resource_group_name = resource_group
     self.container_service_name = container_service_name
     self.acs_client = acs_client 
-    self.instance = client.get(resource_group, container_service_name)
+    self.instance = self.acs_client.get(resource_group, container_service_name)
     self.max_size = 100
     self.min_size = 0 #based on the autoscaler --min arg and VM sku
 
@@ -49,7 +49,7 @@ class ContainerService(object):
 
     if self.desired_capacity != desired_capacity:
         if self.desired_capacity == self.max_size:
-            logger.info("Desired same as max, desired: {}, schedulable: {}".format(
+            logger.info("Desired same as max, deservice_principal_tenantsired: {}, schedulable: {}".format(
                 self.desired_capacity, num_schedulable))
             return False
 
@@ -61,7 +61,7 @@ class ContainerService(object):
             return True
 
     logger.info("Doing nothing: desired_capacity correctly set: {}, schedulable: {}".format(
-        self.name, num_schedulable))set_desired_capacity
+        self.name, num_schedulable))
     return False
 
 

@@ -3,6 +3,7 @@ import datetime
 import logging
 import math
 import time
+import sys
 
 import datadog
 import pykube
@@ -10,7 +11,7 @@ import pykube
 from azure.mgmt.compute import ComputeManagementClient
 from azure.cli.core.commands.client_factory import get_mgmt_service_client
 
-import azure_login
+import autoscaler.azure_login as azure_login
 from autoscaler.container_service import ContainerService
 import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
@@ -84,7 +85,7 @@ class Cluster(object):
         azure_login.login(
             service_principal_app_id,
             service_principal_secret,
-            service_principal,tenant)       
+            service_principal_tenant_id)       
          
 
         #  Create container service
@@ -104,7 +105,6 @@ class Cluster(object):
 
         self.scale_up = scale_up
         self.maintainance = maintainance
-
         self.notifier = notifier
 
         if datadog_api_key:
@@ -128,11 +128,10 @@ class Cluster(object):
                     'Failed to list nodes. Please check kube configuration. Terminating scale loop.')
                 return False
 
-            all_nodes = map(KubeNode, pykube_nodes)
-            self.cs_instance_type = all_nodes[:1].instance_type
-
-            #TODO: What is a managed node in this context?
-            managed_nodes = [node for node in all_nodes if node.is_managed()]            
+            all_nodes = utils.order_nodes(map(KubeNode, pykube_nodes))
+            #ACS only has support for one agent pool at the moment,
+            #so take any agent as reference
+            self.cs_instance_type = all_nodes[0].instance_type           
 
             pods = map(KubePod, pykube.Pod.objects(self.api))
 
@@ -145,9 +144,7 @@ class Cluster(object):
             for node in all_nodes:
                 for pod in running_or_pending_assigned_pods:
                     if pod.node_name == node.name:
-                        node.count_pod(pod)
-
-            #asgs = self.autoscaling_groups.get_all_groups(all_nodes)
+                        node.count_pod(pod)          
 
             pods_to_schedule = self.get_pods_to_schedule(pods)
 
@@ -157,17 +154,17 @@ class Cluster(object):
                 self.scale(
                     pods_to_schedule, all_nodes, self.container_service)
                 logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
-            if self.maintainance:
-                logger.info(
-                    "++++++++++++++ Maintenance Begins ++++++++++++++++")
-                self.maintain(
-                    managed_nodes,
-                    pods_to_schedule, running_or_pending_assigned_pods, self.container_service)
-                logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
+            # if self.maintainance:
+            #     logger.info(
+            #         "++++++++++++++ Maintenance Begins ++++++++++++++++")
+            #     self.maintain(
+            #         all_nodes,
+            #         pods_to_schedule, running_or_pending_assigned_pods, self.container_service)
+            #     logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
 
             return True
-        except botocore.exceptions.ClientError as e:
-            logger.warn(e)
+        except:
+            logger.warn("Unexpected error: {}".format(sys.exc_info()[0]))
             return False
 
     def fulfill_pending(self, container_service, unit_capacity, selectors_hash, pods):
@@ -176,15 +173,12 @@ class Cluster(object):
         pods - list of KubePods that are pending
         """
 
-        
-
         logger.info(
             "========= Scaling for %s ========", selectors_hash)
         logger.debug("pending: %s", pods[:5])
 
         accounted_pods = dict((p, False) for p in pods)
         num_unaccounted = len(pods)
-
         new_instance_resources = []
         assigned_pods = []
         for pod, acc in accounted_pods.items():
@@ -241,9 +235,6 @@ class Cluster(object):
                 num_unaccounted -= 1
 
         logger.debug("remaining pending: %s", num_unaccounted)
-
-        if not num_unaccounted:
-            break
 
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
@@ -344,26 +335,24 @@ class Cluster(object):
         pods_to_schedule = {}
         for pod in pending_unassigned_pods:
             if capacity.is_possible(pod, self.cs_instance_type):
-                pods_to_schedule.setdefault(
-                    utils.selectors_to_hash(pod.selectors), []).append(pod)
+                pods_to_schedule.setdefault(utils.selectors_to_hash(pod.selectors), []).append(pod)
             else:                
                 logger.warn(
                     "Pending pod %s cannot fit %s. "
                     "Please check that requested resource amount is "
                     "consistent with node size."
-                    "Scheduling skipped." % (pod.name, pod.selectors)
-                # self.notifier.notify_invalid_pod_capacity(
-                #     pod, recommended_capacity)
+                    "Scheduling skipped." % (pod.name, pod.selectors))            
+                
         return pods_to_schedule
-
+    
     def scale(self, pods_to_schedule, all_nodes, container_service):
         """
         scale up logic
         """
         #All the nodes in ACS should be of a single type, so take the capacity of any node as reference
-        unit_capacity = all_nodes[:1].capacity
+        unit_capacity = all_nodes[0].capacity
 
-
+        # ???
         self.autoscaling_timeouts.refresh_timeouts(asgs, dry_run=self.dry_run)
 
         #Assume all nodes are alive for now. We will need to implement a way to verify that later on, maybe when VMSS are live?

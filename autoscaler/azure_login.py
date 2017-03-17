@@ -8,14 +8,13 @@ import azure.cli.core.azlogging as azlogging
 from azure.cli.core._util import CLIError
 def login(username, password, tenant):
     """Log in to access Azure subscriptions"""
-    interactive = False
     profile = Profile()
     try:
         subscriptions = profile.find_subscriptions_on_login(
-            interactive,
+            False, #interactive
             username,
             password,
-            True,
+            True, #is service principal
             tenant)
     except AdalError as err:
         # try polish unfriendly server errors
