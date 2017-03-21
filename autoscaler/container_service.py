@@ -1,8 +1,10 @@
+import logging
 
+logger = logging.getLogger(__name__)
 
 class ContainerService(object):
 
-  def __init__(self, acs_client, container_service_name, resource_group):
+  def __init__(self, acs_client, container_service_name, resource_group, nodes):
     self.resource_group_name = resource_group
     self.container_service_name = container_service_name
     self.acs_client = acs_client 
@@ -10,12 +12,12 @@ class ContainerService(object):
     self.max_size = 100
     self.min_size = 0 #based on the autoscaler --min arg and VM sku
 
-    self.nodes = 0 #query kube to know
+    self.nodes = nodes #query kube to know
     self.actual_capacity = 0 # num of nodes * CPU per node
     self.desired_capacity = 0 # desired capacity might be different if we are for example in a scale up process
 
     #keep this list around for future uses, but it should always be empty
-    self.unschedulable_nodes = filter(lambda n: n.unschedulable, self.nodes)
+    self.unschedulable_nodes = list(filter(lambda n: n.unschedulable, self.nodes))
 
   
   def capacity(self):
@@ -79,9 +81,9 @@ class ContainerService(object):
     self.instance.agent_pool_profiles[0].count = new_desired_capacity 
 
     # null out the service principal because otherwise validation complains
-    instance.service_principal_profile = None
+    self.instance.service_principal_profile = None
 
-    client.create_or_update(self.resource_group_name, self.container_service_name, instance)
+    self.acs_client.create_or_update(self.resource_group_name, self.container_service_name, self.instance)
     
     self.desired_capacity = new_desired_capacity
 

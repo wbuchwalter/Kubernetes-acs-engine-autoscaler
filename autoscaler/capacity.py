@@ -22,6 +22,6 @@ def is_possible(pod, instance_type):
     """
     returns whether the pod is possible under the maximum allowable capacity
     """
-    return (unit_caps[instance_type] - pod.resources).possible
+    return (RESOURCE_SPEC[instance_type] - pod.resources).possible
 
 

@@ -40,8 +40,8 @@ class KubePod(object):
         self.start_time = dateutil_parse(pod.obj['status']['startTime']) if 'startTime' in pod.obj['status'] else None
 
         # TODO: refactor
-        requests = map(lambda c: c.get('resources', {}).get('requests', {}),
-                       pod.obj['spec']['containers'])
+        requests = list(map(lambda c: c.get('resources', {}).get('requests', {}),
+                       pod.obj['spec']['containers']))
         resource_requests = {}
         for d in requests:
             for k, v in d.items():
@@ -195,7 +195,7 @@ class KubeNode(object):
         return self.name == other.name
 
     def __str__(self):
-        return "{}: {} ({})".format(self.name, utils.selectors_to_hash(self.selectors))
+        return "{}".format(self.name)
 
 
 class KubeResource(object):
@@ -250,4 +250,4 @@ class KubeResource(object):
 
     @property
     def possible(self):
-        return all(map(lambda x: x >= 0, self.raw.values()))
+        return all(list(map(lambda x: x >= 0, self.raw.values())))

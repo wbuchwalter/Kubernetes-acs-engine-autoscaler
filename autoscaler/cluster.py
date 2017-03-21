@@ -78,6 +78,8 @@ class Cluster(object):
 
         self._drained = {}
 
+        self.container_service_name = container_service_name
+        self.resource_group = resource_group
         #Container Service instance type. Currently ACS only supports one agent pool 
         #so all nodes are of the same type
         self.cs_instance_type = {}
@@ -87,15 +89,6 @@ class Cluster(object):
             service_principal_secret,
             service_principal_tenant_id)       
          
-
-        #  Create container service
-        self.container_service = ContainerService(
-            get_mgmt_service_client(ComputeManagementClient).container_services, 
-            container_service_name, 
-            resource_group)
-
-        # self.autoscaling_timeouts = autoscaling_groups.AutoScalingTimeouts(
-        #     self.session)
 
         # config
         self.idle_threshold = idle_threshold
@@ -115,67 +108,78 @@ class Cluster(object):
 
         self.dry_run = dry_run
 
-    def scale_loop(self):
+    def scale_loop(self, debug):
         """
         runs one loop of scaling to current needs.
         returns True if successfully scaled.
         """
         logger.info("++++++++++++++ Running Scaling Loop ++++++++++++++++")
-        try:
-            pykube_nodes = pykube.Node.objects(self.api)
-            if not pykube_nodes:
-                logger.warn(
-                    'Failed to list nodes. Please check kube configuration. Terminating scale loop.')
+
+        if debug:
+            return self.scale_loop_logic()
+        else:            
+            try:
+                return self.scale_loop_logic()
+            except:
+                logger.warn("Unexpected error: {}".format(sys.exc_info()[0]))
                 return False
 
-            all_nodes = utils.order_nodes(map(KubeNode, pykube_nodes))
-            #ACS only has support for one agent pool at the moment,
-            #so take any agent as reference
-            self.cs_instance_type = all_nodes[0].instance_type           
-
-            pods = map(KubePod, pykube.Pod.objects(self.api))
-
-            running_or_pending_assigned_pods = [
-                p for p in pods if (p.status == KubePodStatus.RUNNING or p.status == KubePodStatus.CONTAINER_CREATING) or (
-                    p.status == KubePodStatus.PENDING and p.node_name
-                )
-            ]
-
-            for node in all_nodes:
-                for pod in running_or_pending_assigned_pods:
-                    if pod.node_name == node.name:
-                        node.count_pod(pod)          
-
-            pods_to_schedule = self.get_pods_to_schedule(pods)
-
-            if self.scale_up:
-                logger.info(
-                    "++++++++++++++ Scaling Up Begins ++++++++++++++++")
-                self.scale(
-                    pods_to_schedule, all_nodes, self.container_service)
-                logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
-            # if self.maintainance:
-            #     logger.info(
-            #         "++++++++++++++ Maintenance Begins ++++++++++++++++")
-            #     self.maintain(
-            #         all_nodes,
-            #         pods_to_schedule, running_or_pending_assigned_pods, self.container_service)
-            #     logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
-
-            return True
-        except:
-            logger.warn("Unexpected error: {}".format(sys.exc_info()[0]))
+    def scale_loop_logic(self):
+        pykube_nodes = pykube.Node.objects(self.api)
+        if not pykube_nodes:
+            logger.warn(
+                'Failed to list nodes. Please check kube configuration. Terminating scale loop.')
             return False
 
-    def fulfill_pending(self, container_service, unit_capacity, selectors_hash, pods):
+        all_nodes = utils.order_nodes(list(map(KubeNode, pykube_nodes)))
+        #ACS only has support for one agent pool at the moment,
+        #so take any agent as reference
+        self.cs_instance_type = all_nodes[0].instance_type           
+
+        pods = list(map(KubePod, pykube.Pod.objects(self.api)))
+        
+        running_or_pending_assigned_pods = [
+            p for p in pods if (p.status == KubePodStatus.RUNNING or p.status == KubePodStatus.CONTAINER_CREATING) or (
+                p.status == KubePodStatus.PENDING and p.node_name
+            )
+        ]
+        
+        for node in all_nodes:
+            for pod in running_or_pending_assigned_pods:
+                if pod.node_name == node.name:
+                    node.count_pod(pod)  
+        pods_to_schedule = self.get_pods_to_schedule(pods)
+        logger.info("Pods to schedule: {}".format(len(pods_to_schedule)))        
+        
+        container_service = ContainerService(
+            get_mgmt_service_client(ComputeManagementClient).container_services, 
+            self.container_service_name, 
+            self.resource_group,
+            all_nodes)
+
+        if self.scale_up:
+            logger.info(
+                "++++++++++++++ Scaling Up Begins ++++++++++++++++")
+            self.scale(
+                pods_to_schedule, all_nodes, container_service)
+            logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
+        # if self.maintainance:
+        #     logger.info(
+        #         "++++++++++++++ Maintenance Begins ++++++++++++++++")
+        #     self.maintain(
+        #         all_nodes,
+        #         pods_to_schedule, running_or_pending_assigned_pods, self.container_service)
+        #     logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
+
+        return True
+
+    def fulfill_pending(self, container_service, unit_capacity, pods):
         """
         selectors_hash - string repr of selectors
         pods - list of KubePods that are pending
         """
 
-        logger.info(
-            "========= Scaling for %s ========", selectors_hash)
-        logger.debug("pending: %s", pods[:5])
+        logger.info("========= Scaling for %s pods ========", len(pods))
 
         accounted_pods = dict((p, False) for p in pods)
         num_unaccounted = len(pods)
@@ -324,7 +328,7 @@ class Cluster(object):
         """
         given a list of KubePod objects,
         return a map of (selectors hash -> pods) to be scheduled
-        """
+        """        
         pending_unassigned_pods = [
             p for p in pods
             if p.status == KubePodStatus.PENDING and (not p.node_name)
@@ -332,16 +336,16 @@ class Cluster(object):
 
         # we only consider a pod to be schedulable if it's pending and
         # unassigned and feasible
-        pods_to_schedule = {}
+        pods_to_schedule = []
         for pod in pending_unassigned_pods:
             if capacity.is_possible(pod, self.cs_instance_type):
-                pods_to_schedule.setdefault(utils.selectors_to_hash(pod.selectors), []).append(pod)
+                pods_to_schedule.append(pod)
             else:                
                 logger.warn(
-                    "Pending pod %s cannot fit %s. "
+                    "Pending pod %s cannot fit. "
                     "Please check that requested resource amount is "
                     "consistent with node size."
-                    "Scheduling skipped." % (pod.name, pod.selectors))            
+                    "Scheduling skipped." % (pod.name))            
                 
         return pods_to_schedule
     
@@ -349,41 +353,40 @@ class Cluster(object):
         """
         scale up logic
         """
+        logger.info("Nodes: {}".format(len(all_nodes)))
+        logger.info("To schedule: {}".format(len(pods_to_schedule)))        
+
         #All the nodes in ACS should be of a single type, so take the capacity of any node as reference
         unit_capacity = all_nodes[0].capacity
-
+        
         # ???
-        self.autoscaling_timeouts.refresh_timeouts(asgs, dry_run=self.dry_run)
+        #self.autoscaling_timeouts.refresh_timeouts(asgs, dry_run=self.dry_run)
 
         #Assume all nodes are alive for now. We will need to implement a way to verify that later on, maybe when VMSS are live?
         cached_live_nodes = all_nodes
        
-        pending_pods = {}
-
+        pending_pods = []
+        
         # for each pending & unassigned job, try to fit them on current machines or count requested
         #   resources towards future machines
-        for selectors_hash, pods in pods_to_schedule.items():
-            for pod in pods:
-                fitting = None
-                for node in cached_live_nodes:
-                    if node.can_fit(pod.resources):
-                        fitting = node
-                        break
-                if fitting is None:
-                    pending_pods.setdefault(selectors_hash, []).append(pod)
-                    logger.info(
-                        "{pod} is pending ({selectors_hash})".format(
-                            pod=pod, selectors_hash=selectors_hash))
-                else:
-                    fitting.count_pod(pod)
-                    logger.info("{pod} fits on {node}".format(pod=pod,
-                                                              node=fitting))
+        for pod in pods_to_schedule: 
+            print(pod)         
+            fitting = None
+            for node in cached_live_nodes:
+                if node.can_fit(pod.resources):
+                    fitting = node
+                    break
+            if fitting is None:
+                pending_pods.append(pod)
+                logger.info("{} is pending".format(pod))
+            else:
+                fitting.count_pod(pod)
+                logger.info("{pod} fits on {node}".format(pod=pod,
+                                                            node=fitting))
 
-        # scale nodes to reach the new capacity
-        # For now we don't need all of this. We could just scale regardless of selectors in a single batch, since we don't support multiple instance type
-        # but keeping the logic in place for future improvments of the platform
-        for selectors_hash, pending in pending_pods.items():
-            self.fulfill_pending(container_service, unit_capacity, selectors_hash, pending)
+
+        logger.info("Pending: {}".format(len(pending_pods)))    
+        self.fulfill_pending(container_service, unit_capacity, pending_pods)
 
 
     def maintain(self, cached_managed_nodes, running_insts_map,

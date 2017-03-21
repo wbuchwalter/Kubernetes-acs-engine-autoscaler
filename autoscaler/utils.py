@@ -2,29 +2,6 @@ import json
 import re
 
 
-def selectors_to_hash(selectors):
-    return json.dumps(selectors, sort_keys=True)
-
-
-def get_groups_for_hash(asgs, selectors_hash):
-    """
-    returns a list of groups from asg that match the selectors
-    """
-    selectors = json.loads(selectors_hash)
-    groups = []
-    for asg in asgs:
-        if asg.is_match_for_selectors(selectors):
-            groups.append(asg)
-    return groups
-
-
-def get_group_for_node(asgs, node):
-    for asg in asgs:
-        if asg.contains(node):
-            return asg
-    return None
-
-
 SI_suffix = {
     'y': 1e-24,  # yocto
     'z': 1e-21,  # zepto
@@ -75,16 +52,10 @@ def parse_bool_label(value):
     return str(value).lower() in ('1', 'true')
 
 
-def get_relevant_selectors(node_selectors):
-    selectors = dict((k, v) for (k, v) in node_selectors.items()
-                     if k.startswith('aws/') or k.startswith('openai/'))
-    return selectors
-
 def order_nodes(node_map):
   """
   takes a map of node and return an ordered list of node.
-  The last nodes will be at the end.
-  The master will not be included in the list
+  The last nodes will be at the end. 
   """
   
   ordered_nodes = []
