@@ -1,2 +1,4 @@
 .idea
 *.pyc
+start.sh
+template.yaml

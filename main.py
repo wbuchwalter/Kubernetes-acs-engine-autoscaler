@@ -19,19 +19,17 @@ DEBUG_LOGGING_MAP = {
 
 @click.command()
 @click.option("--container_service_name")
-@click.option("--resource_group", default="us-west-1")
+@click.option("--resource_group")
 @click.option("--sleep", default=60)
 @click.option("--kubeconfig", default=None,
               help='Full path to kubeconfig file. If not provided, '
                    'we assume that we\'re running on kubernetes.')
 @click.option("--over-provision", default=5)
-
 #how soon after a node becomes idle should we terminate it?
 @click.option("--idle-threshold", default=600)
 
-#how soon after a reserve node (the min number of node we [almnost] always want to keep) becomes idle should we terminate it?
-# This means that the cluster might be doing a cold start if all reserve nodes are idle for this long
-@click.option("--reserve-idle-threshold", default=3600*24*7) 
+#How many agents should we keep even if the cluster is not utilized? The autoscaler will currenty break if --spare-agents == 0
+@click.option("--spare-agents", default=1) 
 @click.option("--service_principal_app_id", default=None, envvar='AZURE_SP_APP_ID')
 @click.option("--service_principal_secret", default=None, envvar='AZURE_SP_SECRET')
 @click.option("--service_principal_tenant_id", default=None, envvar='AZURE_SP_TENANT_ID')
@@ -55,7 +53,7 @@ DEBUG_LOGGING_MAP = {
 @click.option("--debug", is_flag=True) 
 def main(container_service_name, resource_group, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret, service_principal_tenant_id,
-         datadog_api_key,idle_threshold, reserve_idle_threshold,
+         datadog_api_key,idle_threshold, spare_agents,
          over_provision, instance_init_time, no_scale, no_maintenance,
          slack_hook, slack_bot_token, dry_run, verbose, debug):
     logger_handler = logging.StreamHandler(sys.stderr)
@@ -74,7 +72,7 @@ def main(container_service_name, resource_group, sleep, kubeconfig,
                       kubeconfig=kubeconfig,
                       idle_threshold=idle_threshold,
                       instance_init_time=instance_init_time,
-                      reserve_idle_threshold=reserve_idle_threshold,
+                      spare_agents=spare_agents,
                       container_service_name=container_service_name,
                       resource_group=resource_group,
                       scale_up=not no_scale,
