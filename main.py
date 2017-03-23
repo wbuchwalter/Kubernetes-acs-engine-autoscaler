@@ -18,8 +18,8 @@ DEBUG_LOGGING_MAP = {
 
 
 @click.command()
-@click.option("--container_service_name")
-@click.option("--resource_group")
+@click.option("--container-service-name")
+@click.option("--resource-group")
 @click.option("--sleep", default=60)
 @click.option("--kubeconfig", default=None,
               help='Full path to kubeconfig file. If not provided, '
@@ -30,9 +30,9 @@ DEBUG_LOGGING_MAP = {
 
 #How many agents should we keep even if the cluster is not utilized? The autoscaler will currenty break if --spare-agents == 0
 @click.option("--spare-agents", default=1) 
-@click.option("--service_principal_app_id", default=None, envvar='AZURE_SP_APP_ID')
-@click.option("--service_principal_secret", default=None, envvar='AZURE_SP_SECRET')
-@click.option("--service_principal_tenant_id", default=None, envvar='AZURE_SP_TENANT_ID')
+@click.option("--service-principal-app-id", default=None, envvar='AZURE_SP_APP_ID')
+@click.option("--service-principal-secret", default=None, envvar='AZURE_SP_SECRET')
+@click.option("--service-principal-tenant-id", default=None, envvar='AZURE_SP_TENANT_ID')
 @click.option("--datadog-api-key", default=None, envvar='DATADOG_API_KEY')
 @click.option("--instance-init-time", default=25 * 60)
 @click.option("--no-scale", is_flag=True)
