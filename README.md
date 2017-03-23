@@ -1,13 +1,12 @@
 [![Build Status](https://travis-ci.org/openai/kubernetes-ec2-autoscaler.svg?branch=master)](https://travis-ci.org/openai/kubernetes-ec2-autoscaler)
 
+> ### This project is a fork of [OpenAI](https://openai.com/blog/)'s [Kubernetes-ec2-autoscaler](https://github.com/openai/kubernetes-ec2-autoscaler)
+
 # kubernetes-acs-autoscaler
 
 kubernetes-acs-autoscaler is a node-level autoscaler for [Kubernetes](http://kubernetes.io/)
-on Azure Container Services that is designed for batch jobs. Kubernetes is a container orchestration framework
+on Azure Container Services. Kubernetes is a container orchestration framework
 that schedules Docker containers on a cluster, and kubernetes-acs-autoscaler can scale based on the pending job queue.
-
-
-### This project is a fork of [OpenAI](https://openai.com/blog/)'s [Kubernetes-ec2-autoscaler](https://github.com/openai/kubernetes-ec2-autoscaler)
 
 ## Architecture
 
@@ -20,7 +19,11 @@ and Kubernetes APIs, but the recommended way is to set it up as a
 Kubernetes Pod.
 
 ### Credentials
-Once you have an IAM user, you will need its [access key](http://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html).
+
+You need to provide a Service Principal to the autoscaler.
+You can create one using [Azure CLI](https://github.com/Azure/azure-cli):  
+`az ad sp create-for-rbac`
+
 The best way to use the access key in Kubernetes is with a [secret](http://kubernetes.io/docs/user-guide/secrets/).
 
 Here is a sample format for `secret.yaml`:
@@ -31,9 +34,9 @@ metadata:
   name: autoscaler
   namespace: system
 data:
-  aws-access-key-id: [base64 encoded access key]
-  aws-secret-access-key: [base64 encoded secret access key]
-  slack-hook: [optional slack incoming webhook]
+  azure-sp-app-id: [base64 encoded access key]
+  azure-sp-secret: [base64 encoded secret access key]
+  azure-sp-tenant-id: [optional slack incoming webhook]
 ```
 You can then save it in Kubernetes:
 ```
@@ -58,7 +61,6 @@ $ kubectl logs autoscaler-opnax --namespace system
 2016-08-25 20:36:45,985 - autoscaler.cluster - DEBUG - Using kube service account
 2016-08-25 20:36:45,987 - autoscaler.cluster - INFO - ++++++++++++++ Running Scaling Loop ++++++++++++++++
 2016-08-25 20:37:04,221 - autoscaler.cluster - INFO - ++++++++++++++ Scaling Up Begins ++++++++++++++++
-2016-08-25 20:37:04,255 - autoscaler.autoscaling_groups - DEBUG - c4.2xlarge kubernetes-worker - 0 has no timeout
 ...
 ```
 
@@ -68,35 +70,26 @@ $ kubectl logs autoscaler-opnax --namespace system
 $ python main.py [options]
 ```
 
-- --cluster-name: Name of the Kubernetes cluster. Must match the value of the `KubernetesCluster` tag on Auto Scaling Groups.
-- --regions: List of comma-separated regions in order of preference. E.g. `us-west-2,us-east-1` will use "us-west-2" as the
-primary region and "us-east-1" as the secondary.
+- --container-service-name: Name of ACS cluster.
+- --resource-group: Name of the resource group containing the cluster
 - --kubeconfig: Path to kubeconfig YAML file. Leave blank if running in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
 - --idle-threshold: This defines the maximum duration (in seconds) for an instance to be kept idle.
-- --type-idle-threshold: For each instance type, we keep a few running and idle so the cluster has spare capacity for different types of requests. This defines the maximum duration (in seconds) for an instance to be kept idle.
-- --aws-access-key: AWS access key. Can also be specified in environment variable `AWS_ACCESS_KEY`
-- --aws-secret-key: AWS secret access key. Can also be specified in environment variable `AWS_SECRET_ACCESS_KEY`
+- --service-principal-app-id: Azure service principal id. Can also be specified in environment variable `AZURE_SP_APP_ID`
+- --service-principal-secret: Azure service principal secret. Can also be specified in environment variable `AZURE_SP_SECRET`
+- --service-principal-tenant-id: Azure service princiap tenant id. Can also be specified in environment variable `AZURE_SP_TENANT_ID`
 - --instance-init-time: Maximum duration (in seconds) after an instance is launched before being considered unhealthy (running in EC2 but not joining the Kubernetes cluster)
 - --sleep: Time (in seconds) to sleep between scaling loops (to be careful not to run into AWS API limits)
 - --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
 - --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
 - -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
-
+- --debug: Do not catch errors. Explicitly crash.
 
 
 ## Developing
 
-### Locally
-```
-# in your virtual env
-$ pip install -r requirements.txt
-$ python main.py --regions us-west-2,us-east-1,us-west-1 --cluster-name my-kubernetes --aws-access-key 'XXXXXXX' --aws-secret-key 'XXXXXXXXXXXXX' --dry-run -vvv --kubeconfig ~/.kube/config
-$ nosetests test/
-```
-
 ### Docker
 ```
 $ docker build -t autoscaler .
-$ docker run -v $HOME/.kube/config:/root/.kube/config autoscaler python main.py --regions us-west-2,us-east-1,us-west-1 --cluster-name my-kubernetes --aws-access-key 'XXXXXXXXX' --aws-secret-key 'XXXXXXXXXXXXX' --dry-run -vvv --kubeconfig /root/.kube/config
-$ docker run -v $HOME/.kube/config:/root/.kube/config autoscaler nosetests test/
+$ ./devenvh.sh
+$ python main.py --resource-group k8s --container-service-name containerservice-k8s --service-principal-app-id 'XXXXXXXXX' --service-principal-secret 'XXXXXXXXXXXXX' service-principal-tenant-id 'XXXXXX' --dry-run -vvv --kubeconfig /root/.kube/config
 ```
