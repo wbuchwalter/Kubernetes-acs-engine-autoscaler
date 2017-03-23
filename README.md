@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.org/openai/kubernetes-ec2-autoscaler.svg?branch=master)](https://travis-ci.org/openai/kubernetes-ec2-autoscaler)
-
 > ### This project is a fork of [OpenAI](https://openai.com/blog/)'s [Kubernetes-ec2-autoscaler](https://github.com/openai/kubernetes-ec2-autoscaler)
 
 # kubernetes-acs-autoscaler
@@ -10,7 +8,7 @@ that schedules Docker containers on a cluster, and kubernetes-acs-autoscaler can
 
 ## Architecture
 
-![Architecture Diagram](docs/kubernetes-ec2-autoscaler-2.png)
+![Architecture Diagram](docs/kubernetes-acs-autoscaler.png)
 
 ## Setup
 
