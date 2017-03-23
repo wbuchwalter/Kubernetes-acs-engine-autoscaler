@@ -82,7 +82,7 @@ $ python main.py [options]
 - --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
 - --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
 - -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
-
+- --debug: Do not catch errors. Explicitly crash.
 
 
 ## Developing
