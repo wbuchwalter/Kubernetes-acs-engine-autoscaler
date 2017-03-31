@@ -1,4 +1,7 @@
 .idea
 *.pyc
 start.sh
+start_acs.sh
 template.yaml
+.vscode
+azuredeploy*json

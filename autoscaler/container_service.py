@@ -1,74 +1,83 @@
+from azure.cli.core._util import get_file_json
+from azure.cli.core.commands.client_factory import get_mgmt_service_client
+from azure.mgmt.resource.resources import ResourceManagementClient
+from azure.mgmt.compute import ComputeManagementClient
+import time
 import logging
 import autoscaler.utils as utils
+from copy import deepcopy
+from autoscaler.agent_pool import AgentPool
+
 
 logger = logging.getLogger(__name__)
 
 class ContainerService(object):
 
-    def __init__(self, acs_client, container_service_name, resource_group, nodes):
+    def __init__(self, resource_group, nodes, container_service_name):
         self.resource_group_name = resource_group
-        self.container_service_name = container_service_name
-        self.acs_client = acs_client 
-        self.instance = self.acs_client.get(resource_group, container_service_name)
-        self.nodes = nodes 
-
+        self.is_acs_engine = True      
+        if container_service_name:
+            self.container_service_name = container_service_name        
+            self.is_acs_engine = False
+            self.acs_client = get_mgmt_service_client(ComputeManagementClient).container_services
+            self.instance = self.acs_client.get(resource_group, container_service_name)   
+        
         #ACS support up to 100 agents today
-        #WB: how to handle case where cluster has 0 node? How to get unit capacity?
-        self.max_size = 100
-        self.desired_capacity = len(self.nodes)
-        self.unschedulable_nodes = list(filter(lambda n: n.unschedulable, self.nodes))
-        self.master_count = utils.count_master(self.nodes)
+        #TODO: how to handle case where cluster has 0 node? How to get unit capacity?
+        self.max_agent_pool_size = 100
+        self.agent_pools = self.get_agent_pools(nodes)       
+        
+    def get_agent_pools(self, nodes):
+        pools = {}
+        for node in nodes:            
+            pool_name = utils.get_pool_name(node)
+            pools.setdefault(pool_name, []).append(node)
+        
+        agent_pools = []
+        for pool_name in pools:
+            agent_pools.append(AgentPool(pool_name, pools[pool_name]))
 
-    def capacity(self):
-        return NotImplementedException()
+        return agent_pools
 
-    @property
-    def actual_capacity(self):
-        return len(self.nodes)
-
-    def scale_agent_pool(self, new_desired_capacity):
+    def scale_down(self, trim_map, dry_run):
         """
-        scales the container service to the new desired capacity.
-        returns True if desired capacity has been increased as a result.
+        Scale down each agent pool (most recent nodes will be deleted first)
         """
+        new_pool_sizes = {}
+        for pool in self.agent_pools:
+            new_agent_count = pool.actual_capacity - trim_map[pool.name]
+            if  new_agent_count <= 0:            
+                raise Exception("Tried to scale down pool {} to less than 1 agent".format(pool.name))
+            
+            logger.info("Scaling down pool {} by {} agents".format(pool.name, trim_map[pool.name]))
+            new_pool_sizes[pool.name] = new_agent_count
 
-        desired_capacity = min(self.max_size, new_desired_capacity)
-        num_unschedulable = len(self.unschedulable_nodes)
-        num_schedulable = self.actual_capacity - num_unschedulable
+        self.scale_pools(new_pool_sizes, dry_run)
 
-        logger.info("Desired {}, currently at {}".format(
-            desired_capacity, self.desired_capacity))
-        logger.info("Kube node: {} schedulable, {} unschedulable".format(
-            num_schedulable, num_unschedulable))
+    def scale_pools(self, new_pool_sizes, dry_run):        
+        has_changes = False
+        for pool in self.agent_pools:
+            new_size = new_pool_sizes[pool.name]            
+            new_pool_sizes[pool.name] = min(pool.max_size, new_size)
+            if new_pool_sizes[pool.name] == pool.actual_capacity:
+                logger.info("Pool '{}' already at desired capacity ({})".format(pool.name, pool.actual_capacity))
+                continue
+            has_changes = True                
 
-        # Try to get the number of schedulable nodes up if we don't have enough, regardless of whether
-        # ACS's capacity is already at the same as the desired.
-        if num_schedulable < desired_capacity:
-            for node in self.unschedulable_nodes:
-                if node.uncordon():
-                    num_schedulable += 1
-                    # Uncordon only what we need
-                    if num_schedulable == desired_capacity:
-                        break
+            if not dry_run:
+                if new_size > pool.actual_capacity:
+                    pool.reclaim_unschedulable_nodes(new_size)
+            else:
+                logger.info("[Dry run] Would have scaled pool '{}' to {} agent(s) (currently at {})".format(pool.name, new_size, pool.actual_capacity))
+        
+        if not dry_run and has_changes:        
+            if not self.is_acs_engine:
+                for pool in self.agent_pools:
+                    self.set_desired_acs_agent_pool_capacity(new_pool_sizes[pool.name])
+            else:
+                self.deploy_pools(new_pool_sizes)
 
-        if self.desired_capacity != desired_capacity:
-            if self.desired_capacity == self.max_size:
-                logger.info("Desired same as max, desired: {}, schedulable: {}".format(
-                    self.desired_capacity, num_schedulable))
-                return False
-
-            scale_up = self.desired_capacity < desired_capacity
-            if scale_up:
-                # should have gotten our num_schedulable to highest value possible
-                # actually need to grow.
-                self.set_desired_agent_capacity(desired_capacity)
-                return True
-
-        logger.info("Doing nothing: desired_capacity correctly set: {}, schedulable: {}".format(self.container_service_name, num_schedulable))
-        return False
-
-
-    def set_desired_agent_capacity(self, new_desired_capacity):
+    def set_desired_acs_agent_pool_capacity(self, new_desired_capacity):
         """
         sets the desired capacity of the underlying ASG directly.
         note that this is for internal control.
@@ -76,33 +85,38 @@ class ContainerService(object):
         """
 
         #We only support one agent pool on ACS
-        self.instance.agent_pool_profiles[0].count = new_desired_capacity
-
-        logger.info("ACS: {} new agent pool size: {}".format(new_desired_capacity))
-
+        self.instance.agent_pool_profiles[0].count = new_desired_capacity         
+        logger.info("ACS: new agent pool size: {}".format(new_desired_capacity))
 
         # null out the service principal because otherwise validation complains
         self.instance.service_principal_profile = None
 
         self.acs_client.create_or_update(self.resource_group_name, self.container_service_name, self.instance)
 
-        self.desired_capacity = new_desired_capacity
+        self.desired_agent_pool_capacity = new_desired_capacity     
 
-    def scale_down(self, nb_to_trim):
-        """
-        Scale down the agent pool by nb_to_trim (most recent nodes will be deleted)
-        """
+    
+    def deploy_pools(self, new_pool_sizes):
+        print('deploying')
+        from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink   
+        parameters = get_file_json('./azuredeploy.parameters.json')
+        parameters = parameters.get('parameters', parameters)
+        original_parameters = deepcopy(parameters)
         
-        if nb_to_trim == 0:
-            return False
-        new_agent_count = len(nodes) - self.master_count - nb_to_trim
-        if  new_agent_count <= 0:            
-            logger.error("Tried to delete master nodes or scale down to less than 1 agent")
-            return False
+        for pool_name in new_pool_sizes:
+            parameters[pool_name + 'Count'] = {'value': new_pool_sizes[pool_name]}
+            logger.info('Requested size for {}: {}'.format(pool_name, new_pool_sizes[pool_name]))
         
-        logger.info("Scaling down by {} agents".format(nb_to_trim))
+        template = get_file_json('./azuredeploy.json')    
+        properties = DeploymentProperties(template=template, template_link=None,
+                                        parameters=parameters, mode='complete')
+
+        smc = get_mgmt_service_client(ResourceManagementClient)
+        op = smc.deployments.create_or_update(self.resource_group_name, "autoscale", properties, raw=False)
         
-        self.set_desired_capacity(new_agent_count)
-        return True
+        while not op.done():
+            print("Waiting for operation to finish...")
+            time.sleep(30)       
+        print(op.result())
 
   

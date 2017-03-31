@@ -18,12 +18,16 @@ DEBUG_LOGGING_MAP = {
 
 
 @click.command()
-@click.option("--container-service-name")
+@click.option("--container-service-name", default=None, help='container service name (only for ACS, not acs-engine)')
 @click.option("--resource-group")
 @click.option("--sleep", default=60)
 @click.option("--kubeconfig", default=None,
               help='Full path to kubeconfig file. If not provided, '
                    'we assume that we\'re running on kubernetes.')
+@click.option("--parameters-file", default=None,
+              help='Full path to the ARM template parameters file. Needed only if running on acs-engine (and not ACS).')
+@click.option("--template-file", default=None,
+              help='Full path to the ARM template file. Needed only if running on acs-engine (and not ACS).')
 @click.option("--over-provision", default=5)
 #how soon after a node becomes idle should we terminate it?
 @click.option("--idle-threshold", default=600)
@@ -54,6 +58,7 @@ DEBUG_LOGGING_MAP = {
 def main(container_service_name, resource_group, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret, service_principal_tenant_id,
          datadog_api_key,idle_threshold, spare_agents,
+         template_file, parameters_file,
          over_provision, instance_init_time, no_scale, no_maintenance,
          slack_hook, slack_bot_token, dry_run, verbose, debug):
     logger_handler = logging.StreamHandler(sys.stderr)
@@ -64,12 +69,25 @@ def main(container_service_name, resource_group, sleep, kubeconfig,
     if not (service_principal_app_id and service_principal_secret and service_principal_tenant_id):
         logger.error("Missing Azure credentials. Please provide aws-service_principal_app_id, service_principal_secret and service_principal_tenant_id.")
         sys.exit(1)
-
-    notifier = Notifier(slack_hook, slack_bot_token)
+    
+    if (template_file and not parameters_file) or (not template_file and parameters_file):
+           logger.error("Both --template-file and --parameters-file should be provided when running on acs-engine")
+           sys.exit(1)
+        
+    if template_file and container_service_name:
+        logger.error("--template-file and --container-service-name cannot be specified simultaneously. Provide --container-service-name when running on ACS, or --template-file and --parameters-file when running on acs-engine")
+        sys.exit(1)
+        
+    notifier = None
+    if slack_hook and slack_bot_token:
+        notifier = Notifier(slack_hook, slack_bot_token)
+    
     cluster = Cluster(service_principal_app_id=service_principal_app_id,
                       service_principal_secret=service_principal_secret,
                       service_principal_tenant_id=service_principal_tenant_id,
                       kubeconfig=kubeconfig,
+                      template_file=template_file,
+                      parameters_file=parameters_file,
                       idle_threshold=idle_threshold,
                       instance_init_time=instance_init_time,
                       spare_agents=spare_agents,

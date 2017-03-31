@@ -4,19 +4,14 @@ import logging
 import math
 import time
 import sys
-
 import datadog
 import pykube
-
-from azure.mgmt.compute import ComputeManagementClient
-from azure.cli.core.commands.client_factory import get_mgmt_service_client
 
 import autoscaler.azure_login as azure_login
 from autoscaler.container_service import ContainerService
 import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
 import autoscaler.utils as utils
-
 
 # we are interested in all pods, incl. system ones
 pykube.Pod.objects.namespace = None
@@ -52,8 +47,9 @@ class Cluster(object):
 
 
     def __init__(self, service_principal_app_id, service_principal_secret, service_principal_tenant_id,
-                 kubeconfig, idle_threshold, spare_agents,
-                 instance_init_time, container_service_name, resource_group, notifier,
+                 kubeconfig, template_file, parameters_file,
+                 idle_threshold, spare_agents, instance_init_time, 
+                 container_service_name, resource_group, notifier,
                  scale_up=True, maintainance=True,
                  datadog_api_key=None,
                  over_provision=5, dry_run=False):
@@ -70,11 +66,12 @@ class Cluster(object):
 
         self._drained = {}
         self.container_service_name = container_service_name
+        self.template_file = template_file
+        self.parameters_file = parameters_file
         self.resource_group = resource_group
 
-        #Container Service instance type. Currently ACS only supports one agent pool 
-        #so all nodes are of the same type
-        self.cs_instance_type = {}
+        self.agent_pools = {}
+        self.pools_instance_type = {}
 
         azure_login.login(
             service_principal_app_id,
@@ -124,11 +121,12 @@ class Cluster(object):
                 'Failed to list nodes. Please check kube configuration. Terminating scale loop.')
             return False
 
-        all_nodes = utils.order_nodes(list(map(KubeNode, pykube_nodes)))
-        #ACS only has support for one agent pool at the moment,
-        #so take any agent as reference
-        #WB: what if num_node == 0 ?
-        self.cs_instance_type = all_nodes[0].instance_type           
+        all_nodes = list(filter(utils.is_agent, map(KubeNode, pykube_nodes))) 
+
+        container_service = ContainerService( 
+            self.resource_group,
+            all_nodes,
+            self.container_service_name)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))
         
@@ -142,14 +140,9 @@ class Cluster(object):
             for pod in running_or_pending_assigned_pods:
                 if pod.node_name == node.name:
                     node.count_pod(pod)  
-        pods_to_schedule = self.get_pods_to_schedule(pods)
-        logger.info("Pods to schedule: {}".format(len(pods_to_schedule)))        
+        pods_to_schedule = self.get_pods_to_schedule(pods, container_service.agent_pools)
+        logger.info("Pods to schedule: {}".format(len(pods_to_schedule)))  
         
-        container_service = ContainerService(
-            get_mgmt_service_client(ComputeManagementClient).container_services, 
-            self.container_service_name, 
-            self.resource_group,
-            all_nodes)
 
         if self.scale_up:
             logger.info(
@@ -161,10 +154,11 @@ class Cluster(object):
             logger.info(
                 "++++++++++++++ Maintenance Begins ++++++++++++++++")
             self.maintain(
-                all_nodes,pods_to_schedule, running_or_pending_assigned_pods, container_service)
+                pods_to_schedule, running_or_pending_assigned_pods, container_service)
             logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
 
         return True
+
 
     def scale(self, pods_to_schedule, all_nodes, container_service):
         """
@@ -174,9 +168,12 @@ class Cluster(object):
         logger.info("To schedule: {}".format(len(pods_to_schedule)))        
 
         #All the nodes in ACS should be of a single type, so take the capacity of any node as reference
-        unit_capacity = all_nodes[0].capacity
+        #unit_capacity = all_nodes[0].capacity
+
+        # pools_capacity = self.get_pools_capacity()
+       
         
-        # WB: handle timeouts / VM creation time
+        # TODO: handle timeouts / VM creation time
         #self.autoscaling_timeouts.refresh_timeouts(asgs, dry_run=self.dry_run)
 
         #Assume all nodes are alive for now. We will need to implement a way to verify that later on, maybe when VMSS are live?
@@ -200,82 +197,79 @@ class Cluster(object):
                 logger.info("{pod} fits on {node}".format(pod=pod,
                                                             node=fitting))
 
-
         logger.info("Pending pods: {}".format(len(pending_pods)))    
-        self.fulfill_pending(container_service, unit_capacity, pending_pods)
+        self.fulfill_pending(container_service, pending_pods)
 
 
-    def fulfill_pending(self, container_service, unit_capacity, pods):
-        """ 
-        unit_capacity - capacity of a node, since we have only one agent pool, and all agents are the same size, we only need one size       
-        pods - list of KubePods that are pending
-        """
-
+    def fulfill_pending(self, container_service, pods):    
         logger.info("========= Scaling for %s pods ========", len(pods))
 
         accounted_pods = dict((p, False) for p in pods)
         num_unaccounted = len(pods)
-        new_instance_resources = []
-        assigned_pods = []
-        for pod, acc in accounted_pods.items():
-            if acc or not (unit_capacity - pod.resources).possible:
+
+        new_pool_sizes = {}
+        
+
+        for pool in container_service.agent_pools:
+            new_pool_sizes[pool.name] = pool.actual_capacity
+
+            if not num_unaccounted:
                 continue
 
-            found_fit = False
-            for i, instance in enumerate(new_instance_resources):
-                if (instance - pod.resources).possible:
-                    new_instance_resources[i] = instance - pod.resources
-                    assigned_pods[i].append(pod)
-                    found_fit = True
-                    break
-            if not found_fit:
-                new_instance_resources.append(unit_capacity - pod.resources)
-                assigned_pods.append([pod])
+            new_instance_resources = []
+            assigned_pods = []     
+            for pod, acc in accounted_pods.items():
+                if acc or not (pool.unit_capacity - pod.resources).possible:
+                    continue
 
-        # new desired # machines = # running nodes + # machines required to fit jobs that don't
-        # fit on running nodes. This scaling is conservative but won't
-        # create starving
-        units_needed = len(new_instance_resources)
-        units_needed += self.over_provision
+                found_fit = False
+                for i, instance in enumerate(new_instance_resources):
+                    if (instance - pod.resources).possible:
+                        new_instance_resources[i] = instance - pod.resources
+                        assigned_pods[i].append(pod)
+                        found_fit = True
+                        break
+                if not found_fit:
+                    new_instance_resources.append(pool.unit_capacity - pod.resources)
+                    assigned_pods.append([pod])
+
+            # new desired # machines = # running nodes + # machines required to fit jobs that don't
+            # fit on running nodes. This scaling is conservative but won't
+            # create starving
+            units_needed = len(new_instance_resources)
+            units_needed += self.over_provision
         
-        # if self.autoscaling_timeouts.is_timed_out(group):
-        #         # if a machine is timed out, it cannot be scaled further
-        #         # just account for its current capacity (it may have more
-        #         # being launched, but we're being conservative)
-        #         unavailable_units = max(
-        #             0, units_needed - (group.desired_capacity - group.actual_capacity))
-        #     else:
-        unavailable_units = max(0, units_needed - (container_service.max_size - container_service.actual_capacity))
+            # if self.autoscaling_timeouts.is_timed_out(group):
+            #         # if a machine is timed out, it cannot be scaled further
+            #         # just account for its current capacity (it may have more
+            #         # being launched, but we're being conservative)
+            #         unavailable_units = max(
+            #             0, units_needed - (group.desired_capacity - group.actual_capacity))
+            #     else:
+            unavailable_units = max(0, units_needed - (pool.max_size - pool.actual_capacity))
 
-        units_requested = units_needed - unavailable_units
+            units_requested = units_needed - unavailable_units
 
-        logger.debug("units_needed: %s", units_needed)
-        logger.debug("units_requested: %s", units_requested)        
+            logger.debug("units_needed: %s", units_needed)
+            logger.debug("units_requested: %s", units_requested)        
 
-        new_capacity = container_service.actual_capacity + units_requested
-
-        logger.debug("new capacity requested: {} (current capacity: {})".format(new_capacity, container_service.actual_capacity))
-
-        if not self.dry_run:
-            scaled = container_service.scale_agent_pool(new_capacity - container_service.master_count)
+            new_capacity = pool.actual_capacity + units_requested
+            new_pool_sizes[pool.name] = new_capacity     
             
-            #WB: reimplement notifications later on
-            # if scaled:
-            #     self.notifier.notify_scale(container_service, units_requested, pods)
-        else:
-            logger.info(
-                '[Dry run] Would have scaled up to %s', new_capacity)
+            logger.debug("new capacity requested for pool {}: {} agents (current capacity: {} agents)".format(pool.name, new_capacity, pool.actual_capacity))  
 
-        for i in range(min(len(assigned_pods), units_requested)):
-            for pod in assigned_pods[i]:
-                accounted_pods[pod] = True
-                num_unaccounted -= 1
+            for i in range(min(len(assigned_pods), units_requested)):
+                for pod in assigned_pods[i]:
+                    accounted_pods[pod] = True
+                    num_unaccounted -= 1
 
-        logger.debug("remaining pending: %s", num_unaccounted)
+            logger.debug("remaining pending: %s", num_unaccounted)
 
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
             # self.notifier.notify_failed_to_scale(selectors_hash, pods) 
+        
+        container_service.scale_pools(new_pool_sizes, self.dry_run)
 
     def get_node_state(self, node, node_pods, pods_to_schedule):
         """
@@ -293,7 +287,9 @@ class Cluster(object):
         # TODO: we can be a bit more aggressive in killing pods that are
         # replicated
         busy_list = [p for p in node_pods if not p.is_mirrored()]
-        undrainable_list = [p for p in node_pods if not p.is_drainable()]
+        
+        #TODO: Fix this kube-proxy issue, see https://github.com/openai/kubernetes-ec2-autoscaler/issues/23
+        undrainable_list = [p for p in node_pods if not (p.is_drainable() or 'kube-proxy' in p.name)]
         utilization = sum((p.resources for p in busy_list), KubeResource())
         under_utilized = (self.UTIL_THRESHOLD *
                           node.capacity - utilization).possible
@@ -323,7 +319,7 @@ class Cluster(object):
 
         return state
 
-    def get_pods_to_schedule(self, pods):
+    def get_pods_to_schedule(self, pods, agent_pools):
         """
         given a list of KubePod objects,
         return a map of (selectors hash -> pods) to be scheduled
@@ -337,7 +333,7 @@ class Cluster(object):
         # unassigned and feasible
         pods_to_schedule = []
         for pod in pending_unassigned_pods:
-            if capacity.is_possible(pod, self.cs_instance_type):
+            if capacity.is_possible(pod, agent_pools):
                 pods_to_schedule.append(pod)
             else:                
                 logger.warn(
@@ -350,7 +346,7 @@ class Cluster(object):
     
     
 
-    def maintain(self, nodes, pods_to_schedule, running_or_pending_assigned_pods, container_service):
+    def maintain(self, pods_to_schedule, running_or_pending_assigned_pods, container_service):
         """
         maintains running instances:
         - determines if idle nodes should be drained and terminated
@@ -371,65 +367,67 @@ class Cluster(object):
 
         stats_time = time.time()
         
-        nodes_to_trim = 0
+        trim_map = {}
 
-        #Since we can only 'trim' nodes from the end with ACS, start by the end, and so how many we should trim
-        #break once we find a node that should node be deleted or cordoned
-        agent_nodes = list(filter(lambda x: not utils.is_master(x), nodes))
-        agent_nodes.reverse()
-        #flag used to notify that we don't want to delete/drain/cordon further, but we still want to display the state of each node
-        trim_ended = False 
-        for node in agent_nodes:
-            # asg = utils.get_group_for_node(asgs, node)
-            state = self.get_node_state(
-                node, pods_by_node.get(node.name, []), pods_to_schedule)
+        for pool in container_service.agent_pools:
+            #Since we can only 'trim' nodes from the end with ACS, start by the end, and so how many we should trim
+            #break once we find a node that should node be deleted or cordoned
+            nodes_to_trim = 0
+            nodes = pool.nodes.copy()
+            nodes.reverse()
+            #flag used to notify that we don't want to delete/drain/cordon further, but we still want to display the state of each node
+            trim_ended = False 
+            for node in nodes:
+                state = self.get_node_state(
+                    node, pods_by_node.get(node.name, []), pods_to_schedule)
 
-            logger.info("node: %-*s state: %s" % (75, node, state))
-            if trim_ended:
-                continue
+                logger.info("node: %-*s state: %s" % (75, node, state))
+                if trim_ended:
+                    continue
 
-            #DataDog
-            self.stats.increment(
-                'kubernetes.custom.node.state.{}'.format(
-                    state.replace('-', '_')),
-                timestamp=stats_time)
+                #DataDog
+                self.stats.increment(
+                    'kubernetes.custom.node.state.{}'.format(
+                        state.replace('-', '_')),
+                    timestamp=stats_time)
 
-            # state machine & why doesnt python have case?
-            if state in (ClusterNodeState.POD_PENDING, ClusterNodeState.BUSY,
-                         ClusterNodeState.SPARE_AGENT):                       
-                # do nothing
-                trim_ended = True
-            elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE and not trim_ended:
-                if not self.dry_run:
-                    node.cordon()
-                    node.drain(pods_by_node.get(node.name, []),
-                                notifier=self.notifier)
+                # state machine & why doesnt python have case?
+                if state in (ClusterNodeState.POD_PENDING, ClusterNodeState.BUSY,
+                            ClusterNodeState.SPARE_AGENT):                       
+                    # do nothing
+                    trim_ended = True
+                elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE and not trim_ended:
+                    if not self.dry_run:
+                        node.cordon()
+                        node.drain(pods_by_node.get(node.name, []),
+                                    notifier=self.notifier)
+                    else:
+                        logger.info(
+                            '[Dry run] Would have drained and cordoned %s', node)
+                elif state == ClusterNodeState.IDLE_SCHEDULABLE:
+                    if not self.dry_run:
+                        node.cordon()
+                    else:
+                        logger.info('[Dry run] Would have cordoned %s', node)
+                elif state == ClusterNodeState.BUSY_UNSCHEDULABLE:
+                    # this is duplicated in original scale logic
+                    if not self.dry_run:
+                        node.uncordon()
+                    else:
+                        logger.info('[Dry run] Would have uncordoned %s', node)
+                    trim_ended = True
+                elif state == ClusterNodeState.IDLE_UNSCHEDULABLE:
+                    # remove it from asg
+                    if not self.dry_run:
+                        nodes_to_trim += 1
+                    else:
+                        logger.info('[Dry run] Would have scaled in %s', node)
+                elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:
+                    # noop for now
+                    trim_ended = True
                 else:
-                    logger.info(
-                        '[Dry run] Would have drained and cordoned %s', node)
-            elif state == ClusterNodeState.IDLE_SCHEDULABLE:
-                if not self.dry_run:
-                    node.cordon()
-                else:
-                    logger.info('[Dry run] Would have cordoned %s', node)
-            elif state == ClusterNodeState.BUSY_UNSCHEDULABLE:
-                # this is duplicated in original scale logic
-                if not self.dry_run:
-                    node.uncordon()
-                else:
-                    logger.info('[Dry run] Would have uncordoned %s', node)
-                trim_ended = True
-            elif state == ClusterNodeState.IDLE_UNSCHEDULABLE:
-                # remove it from asg
-                if not self.dry_run:
-                    nodes_to_trim += 1
-                else:
-                    logger.info('[Dry run] Would have scaled in %s', node)
-            elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:
-                # noop for now
-                trim_ended = True
-            else:
-                raise Exception("Unhandled state: {}".format(state))
+                    raise Exception("Unhandled state: {}".format(state))
+            trim_map[pool.name] = nodes_to_trim
     
         
-        container_service.scale_down(nodes_to_trim)
+        container_service.scale_down(trim_map, self.dry_run)

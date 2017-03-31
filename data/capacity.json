@@ -1,5 +1,5 @@
 {
     "Standard_DS2": {"cpu": 2, "memory": 7333656657, "pods": 30},
-    "Standard_D2": {"cpu": 2, "memory": 7333656657, "pods": 30}
-    
+    "Standard_D2": {"cpu": 2, "memory": 7333656657, "pods": 30},
+    "Standard_D2_v2": {"cpu": 2, "memory": 7333656657, "pods": 30}  
 }

@@ -52,24 +52,26 @@ def parse_bool_label(value):
     return str(value).lower() in ('1', 'true')
 
 def is_master(node):
-  name_parts = node.name.split('-')  
-  if len(name_parts) != 4:
-    raise ValueError('Kubernetes node name was malformed and cannot be processed.')
+    name_parts = node.name.split('-')  
+    if len(name_parts) != 4:
+        raise ValueError('Kubernetes node name was malformed and cannot be processed.')
+    return name_parts[1] == 'master'
 
-  return name_parts[1] == 'master'
-
-def count_master(nodes):
-  master_count = 0
-  for node in nodes:
-    if is_master:
-      master_count += 1  
-  return master_count
+def is_agent(node):
+    return not is_master(node)
 
 def get_instance_index(node):
-  name_parts = node.name.split('-')  
-  if len(name_parts) != 4:
-    raise ValueError('Kubernetes node name was malformed and cannot be processed.')
-  return int(name_parts[3])
+    name_parts = node.name.split('-')  
+    if len(name_parts) != 4:
+        raise ValueError('Kubernetes node name was malformed and cannot be processed.')
+    return int(name_parts[3])
+
+def get_pool_name(node):
+    name_parts = node.name.split('-')  
+    if len(name_parts) != 4:
+        raise ValueError('Kubernetes node name was malformed and cannot be processed.')
+    return name_parts[1]
+  
 
 def order_nodes(node_map):
   """
@@ -80,18 +82,20 @@ def order_nodes(node_map):
   ordered_nodes = []
  
   for node in node_map:   
-    if is_master(node): 
-      #we want the masters to be at the beginning of the list, as they should never be drained
-      #order between the masters doesn't matter
-      ordered_nodes.insert(0,node) 
-      continue      
+      if is_master(node): 
+          #we want the masters to be at the beginning of the list, as they should never be drained
+          #order between the masters doesn't matter
+          ordered_nodes.insert(0,node) 
+          continue      
 
-    idx=None
-    try:
-      idx = get_instance_index(node)
-    except ValueError:
-      raise ValueError('Kubernetes node name was malformed and cannot be processed.')  
+      idx=None
+      try:
+          idx = get_instance_index(node)
+      except ValueError:
+          raise ValueError('Kubernetes node name was malformed and cannot be processed.')  
 
-    ordered_nodes.insert(idx,node)  
+      ordered_nodes.insert(idx,node)  
 
-  return ordered_nodes
+      return ordered_nodes
+
+        

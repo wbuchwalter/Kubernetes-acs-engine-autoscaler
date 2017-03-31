@@ -18,10 +18,14 @@ with open(Config.CAPACITY_DATA, 'r') as f:
         RESOURCE_SPEC[instance_type] = resource
 DEFAULT_TYPE_SELECTOR_KEY = 'beta.kubernetes.io/instance-type'
 
-def is_possible(pod, instance_type):
+def is_possible(pod, agent_pools):
     """
     returns whether the pod is possible under the maximum allowable capacity
     """
-    return (RESOURCE_SPEC[instance_type] - pod.resources).possible
+    for pool in agent_pools:
+        if (RESOURCE_SPEC[pool.instance_type] - pod.resources).possible:
+            return True
+
+    return False
 
 
