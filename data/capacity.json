@@ -1,5 +1,11 @@
 {
-    "Standard_DS2": {"cpu": 2, "memory": 7333656657, "pods": 30},
-    "Standard_D2": {"cpu": 2, "memory": 7333656657, "pods": 30},
-    "Standard_D2_v2": {"cpu": 2, "memory": 7333656657, "pods": 30}  
+    "Standard_DS2": {"cpu": 2, "memory": 7168000000, "pods": 30},
+    "Standard_D2": {"cpu": 2, "memory": 7168000000, "pods": 30},
+    "Standard_D2_v2": {"cpu": 2, "memory": 7168000000, "pods": 30},
+    "Standard_NC6": {"cpu": 6, "alpha.kubernetes.io/nvidia-gpu": 1, "memory": 57344000000, "pods": 30},
+    "Standard_NC12": {"cpu": 12, "alpha.kubernetes.io/nvidia-gpu": 2, "memory": 114688000000, "pods": 30},
+    "Standard_NC24": {"cpu": 24, "alpha.kubernetes.io/nvidia-gpu": 4, "memory": 229376000000, "pods": 30},
+    "Standard_NV6": {"cpu": 6, "alpha.kubernetes.io/nvidia-gpu": 1, "memory": 57344000000, "pods": 30},
+    "Standard_NV12": {"cpu": 12, "alpha.kubernetes.io/nvidia-gpu": 2, "memory": 114688000000, "pods": 30},
+    "Standard_NV24": {"cpu": 24, "alpha.kubernetes.io/nvidia-gpu": 4, "memory": 229376000000, "pods": 30}
 }

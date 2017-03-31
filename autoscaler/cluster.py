@@ -197,8 +197,9 @@ class Cluster(object):
                 logger.info("{pod} fits on {node}".format(pod=pod,
                                                             node=fitting))
 
-        logger.info("Pending pods: {}".format(len(pending_pods)))    
-        self.fulfill_pending(container_service, pending_pods)
+        logger.info("Pending pods: {}".format(len(pending_pods)))
+        if len(pending_pods) > 0:
+            self.fulfill_pending(container_service, pending_pods)
 
 
     def fulfill_pending(self, container_service, pods):    
