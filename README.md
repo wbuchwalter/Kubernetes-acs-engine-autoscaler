@@ -84,11 +84,11 @@ $ python main.py [options]
 - -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
 - --debug: Do not catch errors. Explicitly crash.
 
-## Autoscaling ACS
+## Autoscaling ACS  
  Pass the name of your container service to `--container-service-name`.  
- `--template-file` and `--parameters-file` should not be provided (reserved for acs-engine) 
+ `--template-file` and `--parameters-file` should not be provided (reserved for acs-engine)   
  
-## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)
+## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)  
 Pass the template (azuredeploy.json) and parameter (azuredeploy.parameters.json) files that you generated with acs-engine to the autoscaler through `--template-file` and `--parameters-file`.  
 `--container-service-name` should be left empty as it is reserved for ACS.
 
