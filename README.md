@@ -70,6 +70,8 @@ $ python main.py [options]
 
 - --container-service-name: Name of ACS cluster.
 - --resource-group: Name of the resource group containing the cluster
+- --template-file: (For acs-engine only) Full path to the ARM template file. 
+- --parameters-file: (For acs-engine only) Full path to the ARM parameters file. 
 - --kubeconfig: Path to kubeconfig YAML file. Leave blank if running in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
 - --idle-threshold: This defines the maximum duration (in seconds) for an instance to be kept idle.
 - --service-principal-app-id: Azure service principal id. Can also be specified in environment variable `AZURE_SP_APP_ID`
@@ -82,6 +84,13 @@ $ python main.py [options]
 - -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
 - --debug: Do not catch errors. Explicitly crash.
 
+## Autoscaling ACS
+ Pass the name of your container service to `--container-service-name`.  
+ `--template-file` and `--parameters-file` should not be provided (reserved for acs-engine) 
+ 
+## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)
+Pass the template (azuredeploy.json) and parameter (azuredeploy.parameters.json) files that you generated with acs-engine to the autoscaler through `--template-file` and `--parameters-file`.  
+`--container-service-name` should be left empty as it is reserved for ACS.
 
 ## Developing
 
