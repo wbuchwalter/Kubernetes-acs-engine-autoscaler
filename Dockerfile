@@ -15,6 +15,9 @@ RUN git clone https://github.com/Azure/azure-cli/
 RUN python ./azure-cli/scripts/dev_setup.py
 COPY . /app/
 WORKDIR /app
+#For some reason libffi needs to be reinstalled at the end, otherwise issues will appear
+RUN apk update
+RUN apk add libffi-dev
 
 
 
