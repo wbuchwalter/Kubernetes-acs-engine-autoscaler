@@ -32,9 +32,9 @@ metadata:
   name: autoscaler
   namespace: system
 data:
-  azure-sp-app-id: [base64 encoded access key]
+  azure-sp-app-id: [base64 encoded app id]
   azure-sp-secret: [base64 encoded secret access key]
-  azure-sp-tenant-id: [optional slack incoming webhook]
+  azure-sp-tenant-id: [base64 encoded tenand id]
 ```
 You can then save it in Kubernetes:
 ```
