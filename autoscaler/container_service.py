@@ -5,7 +5,6 @@ from azure.mgmt.compute import ComputeManagementClient
 import time
 import logging
 import autoscaler.utils as utils
-from copy import deepcopy
 from autoscaler.agent_pool import AgentPool
 
 
@@ -13,8 +12,9 @@ logger = logging.getLogger(__name__)
 
 class ContainerService(object):
 
-    def __init__(self, resource_group, nodes, container_service_name):
+    def __init__(self, resource_group, nodes, container_service_name, deployments):
         self.resource_group_name = resource_group
+        self.deployments = deployments
         self.is_acs_engine = True      
         if container_service_name:
             self.container_service_name = container_service_name        
@@ -73,9 +73,11 @@ class ContainerService(object):
         if not dry_run and has_changes:        
             if not self.is_acs_engine:
                 for pool in self.agent_pools:
-                    self.set_desired_acs_agent_pool_capacity(new_pool_sizes[pool.name])
+                    self.deployments.deploy(lambda: self.set_desired_acs_agent_pool_capacity(new_pool_sizes[pool.name]), new_pool_sizes)
+                    # self.set_desired_acs_agent_pool_capacity(new_pool_sizes[pool.name])
             else:
-                self.deploy_pools(new_pool_sizes)
+                self.deployments.deploy(lambda: self.deploy_pools(new_pool_sizes), new_pool_sizes)                
+                
 
     def set_desired_acs_agent_pool_capacity(self, new_desired_capacity):
         """
@@ -86,22 +88,18 @@ class ContainerService(object):
 
         #We only support one agent pool on ACS
         self.instance.agent_pool_profiles[0].count = new_desired_capacity         
-        logger.info("ACS: new agent pool size: {}".format(new_desired_capacity))
 
         # null out the service principal because otherwise validation complains
         self.instance.service_principal_profile = None
-
-        self.acs_client.create_or_update(self.resource_group_name, self.container_service_name, self.instance)
-
-        self.desired_agent_pool_capacity = new_desired_capacity     
+        self.desired_agent_pool_capacity = new_desired_capacity
+        return self.acs_client.create_or_update(self.resource_group_name, self.container_service_name, self.instance)             
 
     
     def deploy_pools(self, new_pool_sizes):
         print('deploying')
         from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink   
         parameters = get_file_json('./azuredeploy.parameters.json')
-        parameters = parameters.get('parameters', parameters)
-        original_parameters = deepcopy(parameters)
+        parameters = parameters.get('parameters', parameters)       
         
         for pool_name in new_pool_sizes:
             parameters[pool_name + 'Count'] = {'value': new_pool_sizes[pool_name]}
@@ -112,11 +110,5 @@ class ContainerService(object):
                                         parameters=parameters, mode='complete')
 
         smc = get_mgmt_service_client(ResourceManagementClient)
-        op = smc.deployments.create_or_update(self.resource_group_name, "autoscale", properties, raw=False)
-        
-        while not op.done():
-            print("Waiting for operation to finish...")
-            time.sleep(30)       
-        print(op.result())
-
+        return smc.deployments.create_or_update(self.resource_group_name, "autoscale", properties, raw=False)
   

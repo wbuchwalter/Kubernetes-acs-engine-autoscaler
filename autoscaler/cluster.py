@@ -12,6 +12,7 @@ from autoscaler.container_service import ContainerService
 import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
 import autoscaler.utils as utils
+from autoscaler.deployments import Deployments
 
 # we are interested in all pods, incl. system ones
 pykube.Pod.objects.namespace = None
@@ -96,6 +97,7 @@ class Cluster(object):
         self.stats.start()
 
         self.dry_run = dry_run
+        self.deployments = Deployments()
 
     def scale_loop(self, debug):
         """
@@ -126,7 +128,8 @@ class Cluster(object):
         container_service = ContainerService( 
             self.resource_group,
             all_nodes,
-            self.container_service_name)
+            self.container_service_name,
+            self.deployments)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))
         
@@ -165,16 +168,7 @@ class Cluster(object):
         scale up logic
         """
         logger.info("Nodes: {}".format(len(all_nodes)))
-        logger.info("To schedule: {}".format(len(pods_to_schedule)))        
-
-        #All the nodes in ACS should be of a single type, so take the capacity of any node as reference
-        #unit_capacity = all_nodes[0].capacity
-
-        # pools_capacity = self.get_pools_capacity()
-       
-        
-        # TODO: handle timeouts / VM creation time
-        #self.autoscaling_timeouts.refresh_timeouts(asgs, dry_run=self.dry_run)
+        logger.info("To schedule: {}".format(len(pods_to_schedule)))  
 
         #Assume all nodes are alive for now. We will need to implement a way to verify that later on, maybe when VMSS are live?
         cached_live_nodes = all_nodes
@@ -191,7 +185,6 @@ class Cluster(object):
                     break
             if fitting is None:
                 pending_pods.append(pod)
-                logger.info("{} is pending".format(pod))
             else:
                 fitting.count_pod(pod)
                 logger.info("{pod} fits on {node}".format(pod=pod,
@@ -238,15 +231,8 @@ class Cluster(object):
             # fit on running nodes. This scaling is conservative but won't
             # create starving
             units_needed = len(new_instance_resources)
-            units_needed += self.over_provision
-        
-            # if self.autoscaling_timeouts.is_timed_out(group):
-            #         # if a machine is timed out, it cannot be scaled further
-            #         # just account for its current capacity (it may have more
-            #         # being launched, but we're being conservative)
-            #         unavailable_units = max(
-            #             0, units_needed - (group.desired_capacity - group.actual_capacity))
-            #     else:
+            units_needed += self.over_provision        
+           
             unavailable_units = max(0, units_needed - (pool.max_size - pool.actual_capacity))
 
             units_requested = units_needed - unavailable_units
@@ -257,7 +243,7 @@ class Cluster(object):
             new_capacity = pool.actual_capacity + units_requested
             new_pool_sizes[pool.name] = new_capacity     
             
-            logger.debug("new capacity requested for pool {}: {} agents (current capacity: {} agents)".format(pool.name, new_capacity, pool.actual_capacity))  
+            logger.info("New capacity requested for pool {}: {} agents (current capacity: {} agents)".format(pool.name, new_capacity, pool.actual_capacity))  
 
             for i in range(min(len(assigned_pods), units_requested)):
                 for pod in assigned_pods[i]:
@@ -429,6 +415,6 @@ class Cluster(object):
                 else:
                     raise Exception("Unhandled state: {}".format(state))
             trim_map[pool.name] = nodes_to_trim
-    
         
-        container_service.scale_down(trim_map, self.dry_run)
+        if len(list(filter(lambda x: trim_map[x] > 0, trim_map))) > 0:
+            container_service.scale_down(trim_map, self.dry_run)
