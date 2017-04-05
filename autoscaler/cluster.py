@@ -184,12 +184,11 @@ class Cluster(object):
                     fitting = node
                     break
             if fitting is None:
-                pending_pods.append(pod)
+                pending_pods.append(pod)                
             else:
                 fitting.count_pod(pod)
                 logger.info("{pod} fits on {node}".format(pod=pod,
                                                             node=fitting))
-
         logger.info("Pending pods: {}".format(len(pending_pods)))
         if len(pending_pods) > 0:
             self.fulfill_pending(container_service, pending_pods)

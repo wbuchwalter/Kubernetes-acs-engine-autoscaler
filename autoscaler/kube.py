@@ -99,7 +99,7 @@ class KubeNode(object):
         self.region, self.instance_type = self._get_instance_data()
         self.selectors = metadata['labels']
 
-        self.capacity = KubeResource(**node.obj['status']['capacity'])
+        self.capacity = KubeResource(**node.obj['status']['capacity'])       
         self.used_capacity = KubeResource()
         self.unschedulable = node.obj['spec'].get('unschedulable', False)
         self.creation_time = dateutil_parse(metadata['creationTimestamp'])
@@ -171,7 +171,7 @@ class KubeNode(object):
 
     def can_fit(self, resources):
         assert isinstance(resources, KubeResource)
-        left = self.used_capacity + resources - self.capacity
+        left = self.capacity - (self.used_capacity + resources)  
         return left.possible
 
     def is_match(self, pod):
