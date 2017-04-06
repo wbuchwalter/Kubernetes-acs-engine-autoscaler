@@ -48,7 +48,7 @@ class Cluster(object):
 
 
     def __init__(self, service_principal_app_id, service_principal_secret, service_principal_tenant_id,
-                 kubeconfig, template_file, parameters_file,
+                 kubeconfig, template_file, parameters_file, template_file_url, parameters_file_url,
                  idle_threshold, spare_agents, instance_init_time, 
                  container_service_name, resource_group, notifier,
                  scale_up=True, maintainance=True,
@@ -63,32 +63,34 @@ class Cluster(object):
             # for using on kube
             logger.debug('Using kube service account')
             self.api = pykube.HTTPClient(
-                pykube.KubeConfig.from_service_account())
+                pykube.KubeConfig.from_service_account())       
 
+        if template_file or template_file_url:
+            self.arm_template = utils.get_arm_template(template_file, template_file_url)
+            self.arm_parameters = utils.get_arm_parameters(parameters_file, parameters_file_url)
+      
         self._drained = {}
         self.container_service_name = container_service_name
-        self.template_file = template_file
-        self.parameters_file = parameters_file
         self.resource_group = resource_group
-
         self.agent_pools = {}
         self.pools_instance_type = {}
-
-        azure_login.login(
-            service_principal_app_id,
-            service_principal_secret,
-            service_principal_tenant_id)       
-         
 
         # config
         self.idle_threshold = idle_threshold
         self.instance_init_time = instance_init_time
         self.spare_agents = spare_agents
         self.over_provision = over_provision
-
         self.scale_up = scale_up
         self.maintainance = maintainance
         self.notifier = notifier
+
+        self.dry_run = dry_run
+        self.deployments = Deployments()
+
+        azure_login.login(
+            service_principal_app_id,
+            service_principal_secret,
+            service_principal_tenant_id)       
 
         if datadog_api_key:
             datadog.initialize(api_key=datadog_api_key)
@@ -96,8 +98,7 @@ class Cluster(object):
         self.stats = datadog.ThreadStats()
         self.stats.start()
 
-        self.dry_run = dry_run
-        self.deployments = Deployments()
+       
 
     def scale_loop(self, debug):
         """
@@ -127,9 +128,11 @@ class Cluster(object):
 
         container_service = ContainerService( 
             self.resource_group,
-            all_nodes,
+            all_nodes,            
+            self.deployments,
             self.container_service_name,
-            self.deployments)
+            self.arm_template,
+            self.arm_parameters)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))
         

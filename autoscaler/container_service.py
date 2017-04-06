@@ -1,4 +1,4 @@
-from azure.cli.core._util import get_file_json
+
 from azure.cli.core.commands.client_factory import get_mgmt_service_client
 from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
@@ -12,15 +12,19 @@ logger = logging.getLogger(__name__)
 
 class ContainerService(object):
 
-    def __init__(self, resource_group, nodes, container_service_name, deployments):
+    def __init__(self, resource_group, nodes, deployments, container_service_name, arm_template=None, arm_parameters=None):
         self.resource_group_name = resource_group
         self.deployments = deployments
-        self.is_acs_engine = True      
+            
         if container_service_name:
             self.container_service_name = container_service_name        
             self.is_acs_engine = False
             self.acs_client = get_mgmt_service_client(ComputeManagementClient).container_services
             self.instance = self.acs_client.get(resource_group, container_service_name)   
+        else:
+            self.is_acs_engine = True
+            self.arm_parameters = arm_parameters
+            self.arm_template = arm_template
         
         #ACS support up to 100 agents today
         #TODO: how to handle case where cluster has 0 node? How to get unit capacity?
@@ -96,19 +100,15 @@ class ContainerService(object):
 
     
     def deploy_pools(self, new_pool_sizes):
-        print('deploying')
         from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink   
-        parameters = get_file_json('./azuredeploy.parameters.json')
-        parameters = parameters.get('parameters', parameters)       
         
         for pool_name in new_pool_sizes:
-            parameters[pool_name + 'Count'] = {'value': new_pool_sizes[pool_name]}
+            self.arm_parameters[pool_name + 'Count'] = {'value': new_pool_sizes[pool_name]}
             logger.info('Requested size for {}: {}'.format(pool_name, new_pool_sizes[pool_name]))
         
-        template = get_file_json('./azuredeploy.json')    
-        properties = DeploymentProperties(template=template, template_link=None,
-                                        parameters=parameters, mode='complete')
+        properties = DeploymentProperties(template=self.arm_template, template_link=None,
+                                        parameters=self.arm_parameters, mode='complete')
 
         smc = get_mgmt_service_client(ResourceManagementClient)
-        return smc.deployments.create_or_update(self.resource_group_name, "autoscale", properties, raw=False)
+        return smc.deployments.create_or_update(self.resource_group_name, "autoscaler-deployment", properties, raw=False)
   

@@ -1,6 +1,7 @@
 import json
 import re
-
+import urllib.request
+from azure.cli.core._util import get_file_json
 
 SI_suffix = {
     'y': 1e-24,  # yocto
@@ -74,28 +75,47 @@ def get_pool_name(node):
   
 
 def order_nodes(node_map):
-  """
-  takes a map of node and return an ordered list of node.
-  The last nodes will be at the end. 
-  """
-  
-  ordered_nodes = []
- 
-  for node in node_map:   
-      if is_master(node): 
-          #we want the masters to be at the beginning of the list, as they should never be drained
-          #order between the masters doesn't matter
-          ordered_nodes.insert(0,node) 
-          continue      
+    """
+    takes a map of node and return an ordered list of node.
+    The last nodes will be at the end. 
+    """
+    
+    ordered_nodes = []
+    
+    for node in node_map:   
+        if is_master(node): 
+            #we want the masters to be at the beginning of the list, as they should never be drained
+            #order between the masters doesn't matter
+            ordered_nodes.insert(0,node) 
+            continue      
 
-      idx=None
-      try:
-          idx = get_instance_index(node)
-      except ValueError:
-          raise ValueError('Kubernetes node name was malformed and cannot be processed.')  
+        idx=None
+        try:
+            idx = get_instance_index(node)
+        except ValueError:
+            raise ValueError('Kubernetes node name was malformed and cannot be processed.')  
 
-      ordered_nodes.insert(idx,node)  
+        ordered_nodes.insert(idx,node)  
 
-      return ordered_nodes
+        return ordered_nodes
+
+def get_arm_template(local_file_path, url):
+    if local_file_path:
+        return get_file_json(local_file_path)
+        
+    with urllib.request.urlopen(url) as response:
+        raw = response.read()
+        return json.loads(raw)
+
+def get_arm_parameters(local_file_path, url):
+    if local_file_path:
+        return get_file_json(local_file_path)
+    
+    with urllib.request.urlopen(url) as response:
+        raw = response.read()
+        parameters = json.loads(raw)
+        parameters = parameters.get('parameters', parameters)
+        return parameters
+
 
         
