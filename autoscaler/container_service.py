@@ -2,6 +2,8 @@
 from azure.cli.core.commands.client_factory import get_mgmt_service_client
 from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
+from azure.mgmt.storage import StorageManagementClient
+from azure.storage.blob import BlockBlobService
 import time
 import logging
 import autoscaler.utils as utils
@@ -57,6 +59,53 @@ class ContainerService(object):
             new_pool_sizes[pool.name] = new_agent_count
 
         self.scale_pools(new_pool_sizes, dry_run, False)
+    
+    def delete_node(self, node):
+        logger.info('deleting node {}'.format(node.name))
+        resource_management_client = get_mgmt_service_client(ResourceManagementClient)
+        compute_management_client = get_mgmt_service_client(ComputeManagementClient)
+        storage_management_client = get_mgmt_service_client(StorageManagementClient)  
+
+        #save disk location
+        vm_details = compute_management_client.virtual_machines.get(self.resource_group_name, node.name, None)
+        storage_infos = vm_details.storage_profile.os_disk.vhd.uri.split('/')
+        account_name = storage_infos[2].split('.')[0]
+        container_name = storage_infos[3]
+        blob_name = storage_infos[4]
+
+        #delete vm
+        logger.info('Deleting VM')
+        delete_vm_op = resource_management_client.resources.delete(self.resource_group_name,
+                                        'Microsoft.Compute',
+                                        '',
+                                        'virtualMachines',
+                                        node.name,
+                                        '2016-03-30')
+        delete_vm_op.wait()                                
+        logger.info(delete_vm_op.result())
+
+        #delete nic
+        logger.info('Deleting NIC')
+        name_parts = node.name.split('-')
+        nic_name = '{}-{}-{}-nic-{}'.format(name_parts[0], name_parts[1], name_parts[2], name_parts[3])
+        delete_nic_op = resource_management_client.resources.delete(self.resource_group_name,
+                                        'Microsoft.Network',
+                                        '',
+                                        'networkInterfaces',
+                                        nic_name,
+                                        '2016-03-30')        
+        delete_nic_op.wait()
+        logger.info(delete_nic_op.result())
+
+        #delete os blob
+        logger.info('Deleting OS disk')
+        keys = storage_management_client.storage_accounts.list_keys(self.resource_group_name, account_name)        
+        key = keys.keys[0].value
+
+        block_blob_service = BlockBlobService(account_name=account_name, account_key=key)
+        delete_blob_op = block_blob_service.delete_blob(container_name, blob_name)
+        logger.info(delete_blob_op)
+
 
     def scale_pools(self, new_pool_sizes, dry_run, is_scale_up):        
         has_changes = False

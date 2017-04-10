@@ -371,7 +371,10 @@ class Cluster(object):
                     node, pods_by_node.get(node.name, []), pods_to_schedule)
 
                 logger.info("node: %-*s state: %s" % (75, node, state))
-                if trim_ended:
+
+                #With ACS, if we don't want to break the SLA, we can only kill nodes starting by the most recent
+                #With acs-engine, we can directly delete any node using Azure API
+                if trim_ended and not container_service.is_acs_engine:
                     continue
 
                 #DataDog
@@ -385,7 +388,7 @@ class Cluster(object):
                             ClusterNodeState.SPARE_AGENT):                       
                     # do nothing
                     trim_ended = True
-                elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE and not trim_ended:
+                elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE and (not trim_ended or container_service.is_acs_engine):
                     if not self.dry_run:
                         node.cordon()
                         node.drain(pods_by_node.get(node.name, []),
@@ -409,6 +412,8 @@ class Cluster(object):
                     # remove it from asg
                     if not self.dry_run:
                         nodes_to_trim += 1
+                        if container_service.is_acs_engine:
+                            container_service.delete_node(node)
                     else:
                         logger.info('[Dry run] Would have scaled in %s', node)
                 elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:
@@ -418,5 +423,5 @@ class Cluster(object):
                     raise Exception("Unhandled state: {}".format(state))
             trim_map[pool.name] = nodes_to_trim
         
-        if len(list(filter(lambda x: trim_map[x] > 0, trim_map))) > 0:
+        if not container_service.is_acs_engine and len(list(filter(lambda x: trim_map[x] > 0, trim_map))) > 0:
             container_service.scale_down(trim_map, self.dry_run)
