@@ -258,7 +258,7 @@ class Cluster(object):
             logger.warn('Failed to scale sufficiently.')
             # self.notifier.notify_failed_to_scale(selectors_hash, pods) 
         
-        container_service.scale_pools(new_pool_sizes, self.dry_run)
+        container_service.scale_pools(new_pool_sizes, self.dry_run, True)
 
     def get_node_state(self, node, node_pods, pods_to_schedule):
         """

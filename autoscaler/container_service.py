@@ -56,9 +56,9 @@ class ContainerService(object):
             logger.info("Scaling down pool {} by {} agents".format(pool.name, trim_map[pool.name]))
             new_pool_sizes[pool.name] = new_agent_count
 
-        self.scale_pools(new_pool_sizes, dry_run)
+        self.scale_pools(new_pool_sizes, dry_run, False)
 
-    def scale_pools(self, new_pool_sizes, dry_run):        
+    def scale_pools(self, new_pool_sizes, dry_run, is_scale_up):        
         has_changes = False
         for pool in self.agent_pools:
             new_size = new_pool_sizes[pool.name]            
@@ -78,9 +78,8 @@ class ContainerService(object):
             if not self.is_acs_engine:
                 for pool in self.agent_pools:
                     self.deployments.deploy(lambda: self.set_desired_acs_agent_pool_capacity(new_pool_sizes[pool.name]), new_pool_sizes)
-                    # self.set_desired_acs_agent_pool_capacity(new_pool_sizes[pool.name])
             else:
-                self.deployments.deploy(lambda: self.deploy_pools(new_pool_sizes), new_pool_sizes)                
+                self.deployments.deploy(lambda: self.deploy_pools(new_pool_sizes, is_scale_up), new_pool_sizes)                
                 
 
     def set_desired_acs_agent_pool_capacity(self, new_desired_capacity):
@@ -99,16 +98,37 @@ class ContainerService(object):
         return self.acs_client.create_or_update(self.resource_group_name, self.container_service_name, self.instance)             
 
     
-    def deploy_pools(self, new_pool_sizes):
-        from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink   
-        
-        for pool_name in new_pool_sizes:
-            self.arm_parameters[pool_name + 'Count'] = {'value': new_pool_sizes[pool_name]}
-            logger.info('Requested size for {}: {}'.format(pool_name, new_pool_sizes[pool_name]))
+    def deploy_pools(self, new_pool_sizes, is_scale_up):
+        from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink
+
+        for pool in self.agent_pools:
+            if is_scale_up:
+                self.arm_parameters[pool.name + 'Offset'] = {'value': pool.actual_capacity}
+            self.arm_parameters[pool.name + 'Count'] = {'value': new_pool_sizes[pool.name]}   
+
+        if is_scale_up:
+            self.prepare_template_for_scale_up(self.arm_template)        
         
         properties = DeploymentProperties(template=self.arm_template, template_link=None,
-                                        parameters=self.arm_parameters, mode='complete')
+                                        parameters=self.arm_parameters, mode='incremental')
 
         smc = get_mgmt_service_client(ResourceManagementClient)
         return smc.deployments.create_or_update(self.resource_group_name, "autoscaler-deployment", properties, raw=False)
+    
+    def prepare_template_for_scale_up(self, template):
+        nsg_resource_index = -1
+        resources = template['resources']
+        for i in range(len(resources)):
+            resource_type = resources[i]['type']
+            if resource_type == 'Microsoft.Network/networkSecurityGroups':
+                nsg_resource_index = i
+            if resource_type == 'Microsoft.Network/virtualNetworks':
+                dependencies = resources[i]['dependsOn']
+                for j in range(len(dependencies)):            
+                    if dependencies[j] == "[concat('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]":
+                        dependencies.pop(j)
+                        break;
+
+        resources.pop(nsg_resource_index) 
+           
   
