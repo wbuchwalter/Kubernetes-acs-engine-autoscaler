@@ -41,7 +41,39 @@ You can then save it in Kubernetes:
 $ kubectl create -f secret.yaml
 ```
 
-### Run
+## Configuration
+
+```
+$ python main.py [options]
+```
+
+- --container-service-name: Name of ACS cluster.
+- --resource-group: Name of the resource group containing the cluster
+- --template-file: [acs-engine only] Full path to the ARM template file.
+- --template-file-url: [acs-engine only] URL to the ARM template file.  
+- --parameters-file: [acs-engine only] Full path to the ARM parameters file. 
+- --parameters-file-url: [acs-engine only] URL to the ARM parameters file.
+- --kubeconfig: Path to kubeconfig YAML file. Leave blank if running in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
+- --idle-threshold: This defines the maximum duration (in seconds) for an instance to be kept idle.
+- --service-principal-app-id: Azure service principal id. Can also be specified in environment variable `AZURE_SP_APP_ID`
+- --service-principal-secret: Azure service principal secret. Can also be specified in environment variable `AZURE_SP_SECRET`
+- --service-principal-tenant-id: Azure service princiap tenant id. Can also be specified in environment variable `AZURE_SP_TENANT_ID`
+- --instance-init-time: Maximum duration (in seconds) after an instance is launched before being considered unhealthy (running in EC2 but not joining the Kubernetes cluster)
+- --sleep: Time (in seconds) to sleep between scaling loops (to be careful not to run into AWS API limits)
+- --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
+- --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
+- -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
+- --debug: Do not catch errors. Explicitly crash.
+
+## Autoscaling ACS  
+ Pass the name of your container service to `--container-service-name`.  
+ 
+## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)  
+Pass the template (azuredeploy.json) and parameter (azuredeploy.parameters.json) files that you generated with acs-engine to the autoscaler through `--template-file` and `--parameters-file` or `--template-file-url` and `--parameters-file-url`
+`--container-service-name` should be left empty as it is reserved for ACS.
+
+
+### Run in-cluster
 [scaling-controller.yaml](scaling-controller.yaml) has an example
 [Replication Controller](http://kubernetes.io/docs/user-guide/replication-controller/)
 that will set up Kubernetes to always run exactly one copy of the autoscaler.
@@ -62,39 +94,7 @@ $ kubectl logs autoscaler-opnax --namespace system
 ...
 ```
 
-## Configuration
-
-```
-$ python main.py [options]
-```
-
-- --container-service-name: Name of ACS cluster.
-- --resource-group: Name of the resource group containing the cluster
-- --template-file: (For acs-engine only) Full path to the ARM template file. 
-- --parameters-file: (For acs-engine only) Full path to the ARM parameters file. 
-- --kubeconfig: Path to kubeconfig YAML file. Leave blank if running in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
-- --idle-threshold: This defines the maximum duration (in seconds) for an instance to be kept idle.
-- --service-principal-app-id: Azure service principal id. Can also be specified in environment variable `AZURE_SP_APP_ID`
-- --service-principal-secret: Azure service principal secret. Can also be specified in environment variable `AZURE_SP_SECRET`
-- --service-principal-tenant-id: Azure service princiap tenant id. Can also be specified in environment variable `AZURE_SP_TENANT_ID`
-- --instance-init-time: Maximum duration (in seconds) after an instance is launched before being considered unhealthy (running in EC2 but not joining the Kubernetes cluster)
-- --sleep: Time (in seconds) to sleep between scaling loops (to be careful not to run into AWS API limits)
-- --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
-- --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
-- -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
-- --debug: Do not catch errors. Explicitly crash.
-
-## Autoscaling ACS  
- Pass the name of your container service to `--container-service-name`.  
- `--template-file` and `--parameters-file` should not be provided (reserved for acs-engine)   
- 
-## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)  
-Pass the template (azuredeploy.json) and parameter (azuredeploy.parameters.json) files that you generated with acs-engine to the autoscaler through `--template-file` and `--parameters-file`.  
-`--container-service-name` should be left empty as it is reserved for ACS.
-
-## Developing
-
-### Docker
+### Running locally
 ```
 $ docker build -t autoscaler .
 $ ./devenvh.sh
