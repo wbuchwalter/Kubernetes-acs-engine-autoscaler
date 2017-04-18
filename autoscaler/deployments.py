@@ -15,11 +15,8 @@ class Deployments:
                 return
             self.requested_pool_sizes = new_pool_sizes   
             self._current_deployment = func()            
-            self._current_deployment.add_done_callback(self.done_callback)
-            logger.info('Deployment started')
+            logger.info('Deployment started...')
+            self._current_deployment.wait()
+            logger.info('Deployment finished: {}'.format(self._current_deployment.result()))
         else:
             logger.info('Another deployment is already in progress')
-    
-    def done_callback(self, result):
-        logger.info('Deployment finished') 
-       
