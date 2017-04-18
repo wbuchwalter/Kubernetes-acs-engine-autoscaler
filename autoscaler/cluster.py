@@ -99,7 +99,6 @@ class Cluster(object):
         self.stats.start()
 
        
-
     def scale_loop(self, debug):
         """
         runs one loop of scaling to current needs.
@@ -284,8 +283,6 @@ class Cluster(object):
                           node.capacity - utilization).possible
         drainable = not undrainable_list
 
-        spare_capacity = node.instance_index < self.spare_agents
-      
         if busy_list and not under_utilized:
             if node.unschedulable:
                 state = ClusterNodeState.BUSY_UNSCHEDULABLE
@@ -293,8 +290,8 @@ class Cluster(object):
                 state = ClusterNodeState.BUSY
         elif pods_to_schedule and not node.unschedulable:
             state = ClusterNodeState.POD_PENDING
-        elif spare_capacity:
-            state = ClusterNodeState.SPARE_AGENT    
+        # elif is_spare_agent:
+        #     state = ClusterNodeState.SPARE_AGENT    
         elif under_utilized and (busy_list or not node.unschedulable):          
             if drainable:
                 state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE
@@ -362,14 +359,24 @@ class Cluster(object):
             #Since we can only 'trim' nodes from the end with ACS, start by the end, and so how many we should trim
             #break once we find a node that should node be deleted or cordoned
             nodes_to_trim = 0
+            #flag used to notify that we don't want to delete/drain/cordon further, but we still want to display the state of each node
+            #this only used for ACS, as we can delete any node we want in acs-engine
+            trim_ended = False 
+            #maximum nomber of nodes we can drain without hitting our spare capacity
+            max_nodes_to_drain = pool.actual_capacity - self.spare_agents
+            
             nodes = pool.nodes.copy()
             nodes.reverse()
-            #flag used to notify that we don't want to delete/drain/cordon further, but we still want to display the state of each node
-            trim_ended = False 
+            
             for node in nodes:
-                state = self.get_node_state(
-                    node, pods_by_node.get(node.name, []), pods_to_schedule)
-
+                state = self.get_node_state(node, pods_by_node.get(node.name, []), pods_to_schedule)
+                if state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE:
+                    #For ACS, spare agents are always the older nodes                   
+                    if not container_service.is_acs_engine and node.instance_index < self.spare_agents:
+                        state = ClusterNodeState.SPARE_AGENT
+                    elif container_service.is_acs_engine and max_nodes_to_drain == 0:
+                        state = ClusterNodeState.SPARE_AGENT                
+              
                 logger.info("node: %-*s state: %s" % (75, node, state))
 
                 #With ACS, if we don't want to break the SLA, we can only kill nodes starting by the most recent
@@ -409,7 +416,6 @@ class Cluster(object):
                         logger.info('[Dry run] Would have uncordoned %s', node)
                     trim_ended = True
                 elif state == ClusterNodeState.IDLE_UNSCHEDULABLE:
-                    # remove it from asg
                     if not self.dry_run:
                         nodes_to_trim += 1
                         if container_service.is_acs_engine:

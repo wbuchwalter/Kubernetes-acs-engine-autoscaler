@@ -82,7 +82,6 @@ class ContainerService(object):
                                         node.name,
                                         '2016-03-30')
         delete_vm_op.wait()                                
-        logger.info(delete_vm_op.result())
 
         #delete nic
         logger.info('Deleting NIC')
@@ -95,7 +94,6 @@ class ContainerService(object):
                                         nic_name,
                                         '2016-03-30')        
         delete_nic_op.wait()
-        logger.info(delete_nic_op.result())
 
         #delete os blob
         logger.info('Deleting OS disk')
@@ -103,8 +101,7 @@ class ContainerService(object):
         key = keys.keys[0].value
 
         block_blob_service = BlockBlobService(account_name=account_name, account_key=key)
-        delete_blob_op = block_blob_service.delete_blob(container_name, blob_name)
-        logger.info(delete_blob_op)
+        block_blob_service.delete_blob(container_name, blob_name)
 
 
     def scale_pools(self, new_pool_sizes, dry_run, is_scale_up):        
@@ -151,13 +148,14 @@ class ContainerService(object):
         from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink
 
         for pool in self.agent_pools:
-            if is_scale_up:
-                self.arm_parameters[pool.name + 'Offset'] = {'value': pool.actual_capacity}
-            self.arm_parameters[pool.name + 'Count'] = {'value': new_pool_sizes[pool.name]}   
+            if is_scale_up and pool.actual_capacity < new_pool_sizes[pool.name]:
+                self.arm_parameters[pool.name + 'Offset'] = {'value': pool.actual_capacity}              
+            self.arm_parameters[pool.name + 'Count'] = {'value': new_pool_sizes[pool.name]} 
 
         if is_scale_up:
             self.prepare_template_for_scale_up(self.arm_template)        
         
+        # pnt(self.arm_parameters)
         properties = DeploymentProperties(template=self.arm_template, template_link=None,
                                         parameters=self.arm_parameters, mode='incremental')
 
