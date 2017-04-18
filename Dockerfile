@@ -9,10 +9,10 @@ RUN apk --update add --virtual build-dependencies \
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
-RUN git clone https://github.com/Azure/azure-cli/
+#RUN git clone https://github.com/Azure/azure-cli/
 # Temporary until https://github.com/Azure/azure-cli/issues/2548 is fixed
 #RUN cd ./azure-cli && git checkout 41ecccd 
-RUN python ./azure-cli/scripts/dev_setup.py
+#RUN python ./azure-cli/scripts/dev_setup.py
 COPY . /app/
 WORKDIR /app
 #For some reason libffi needs to be reinstalled at the end, otherwise issues will appear

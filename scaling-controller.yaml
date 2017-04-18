@@ -40,9 +40,9 @@ spec:
             - python
             - main.py
             - --resource-group 
-            - acs
+            - <group-name>
             - --container-service-name 
-            - containerservice-acs            
+            - <container-service-name>           
             - -vvv
             - --over-provision
             - "0"
