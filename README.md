@@ -30,7 +30,6 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: autoscaler
-  namespace: system
 data:
   azure-sp-app-id: [base64 encoded app id]
   azure-sp-secret: [base64 encoded secret access key]

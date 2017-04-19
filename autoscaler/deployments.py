@@ -1,4 +1,5 @@
 import logging
+from msrestazure.azure_operation import AzureOperationPoller
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +15,11 @@ class Deployments:
                 logger.info('Requested a new deployment with unchanged pool sizes, skipping.')
                 return
             self.requested_pool_sizes = new_pool_sizes   
-            self._current_deployment = func()            
-            logger.info('Deployment started...')
-            self._current_deployment.wait()
-            logger.info('Deployment finished: {}'.format(self._current_deployment.result()))
+            self._current_deployment = func()  
+            if isinstance(self._current_deployment, AzureOperationPoller):
+                logger.info('Deployment started...')
+                self._current_deployment.wait()
+                logger.info('Deployment finished: {}'.format(self._current_deployment.result()))
+            
         else:
             logger.info('Another deployment is already in progress')

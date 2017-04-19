@@ -419,7 +419,7 @@ class Cluster(object):
                     if not self.dry_run:
                         nodes_to_trim += 1
                         if container_service.is_acs_engine:
-                            container_service.delete_node(node)
+                            container_service.delete_node(pool, node)
                     else:
                         logger.info('[Dry run] Would have scaled in %s', node)
                 elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:

@@ -5,3 +5,4 @@ start_acs.sh
 template.yaml
 .vscode
 azuredeploy*json
+secret.yaml

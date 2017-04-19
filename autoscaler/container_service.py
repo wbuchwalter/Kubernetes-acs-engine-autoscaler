@@ -60,7 +60,7 @@ class ContainerService(object):
 
         self.scale_pools(new_pool_sizes, dry_run, False)
     
-    def delete_node(self, node):
+    def delete_resources_for_node(self, node):
         logger.info('deleting node {}'.format(node.name))
         resource_management_client = get_mgmt_service_client(ResourceManagementClient)
         compute_management_client = get_mgmt_service_client(ComputeManagementClient)
@@ -102,6 +102,14 @@ class ContainerService(object):
 
         block_blob_service = BlockBlobService(account_name=account_name, account_key=key)
         block_blob_service.delete_blob(container_name, blob_name)
+
+    def delete_node(self, pool, node):
+        pool_sizes = {}
+        for pool in self.agent_pools:
+            pool_sizes[pool.name] = pool.actual_capacity
+        pool_sizes[pool.name] = pool.actual_capacity - 1
+
+        self.deployments.deploy(lambda: self.delete_resources_for_node(node), pool_sizes)                
 
 
     def scale_pools(self, new_pool_sizes, dry_run, is_scale_up):        
@@ -155,7 +163,6 @@ class ContainerService(object):
         if is_scale_up:
             self.prepare_template_for_scale_up(self.arm_template)        
         
-        # pnt(self.arm_parameters)
         properties = DeploymentProperties(template=self.arm_template, template_link=None,
                                         parameters=self.arm_parameters, mode='incremental')
 

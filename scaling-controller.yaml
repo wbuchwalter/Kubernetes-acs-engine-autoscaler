@@ -40,12 +40,17 @@ spec:
             - python
             - main.py
             - --resource-group 
-            - <group-name>
-            - --container-service-name 
-            - <container-service-name>           
+            - cluster
+            - --sleep
+            - "20"
+            - --debug           
             - -vvv
             - --over-provision
             - "0"
+            - --template-file-url
+            - https://gist.githubusercontent.com/wbuchwalter/5f52a563f7f7f52416f55e82dcd6b290/raw/c6340c1f6ac794af2648bc136989aba28bd76c37/template.json
+            - --parameters-file-url
+            - https://gist.githubusercontent.com/wbuchwalter/a8a3076f4ece7ec05fff1a82f4779224/raw/63323c28222c07b0a70a3fee93b06da9559393f8/params.json
         imagePullPolicy: Always
       restartPolicy: Always
       dnsPolicy: Default  # Don't use cluster DNS.

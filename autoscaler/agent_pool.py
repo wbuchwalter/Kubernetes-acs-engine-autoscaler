@@ -1,4 +1,4 @@
-from azure.cli.core._util import get_file_json
+from azure.cli.core.util import get_file_json
 from azure.cli.core.commands.client_factory import get_mgmt_service_client
 from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
