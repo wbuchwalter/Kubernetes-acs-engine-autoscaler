@@ -58,7 +58,8 @@ $ python main.py [options]
 - --service-principal-app-id: Azure service principal id. Can also be specified in environment variable `AZURE_SP_APP_ID`
 - --service-principal-secret: Azure service principal secret. Can also be specified in environment variable `AZURE_SP_SECRET`
 - --service-principal-tenant-id: Azure service princiap tenant id. Can also be specified in environment variable `AZURE_SP_TENANT_ID`
-- --instance-init-time: Maximum duration (in seconds) after an instance is launched before being considered unhealthy (running in EC2 but not joining the Kubernetes cluster)
+- --instance-init-time: Maximum duration (in seconds) after an instance is launched before being considered unhealthy (running in Azure but not joining the Kubernetes cluster)
+- --over-provision: Number of cluster agents to over provision in anticipation for imminent load
 - --sleep: Time (in seconds) to sleep between scaling loops (to be careful not to run into AWS API limits)
 - --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
 - --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
