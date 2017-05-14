@@ -33,19 +33,15 @@ spec:
               key: azure-sp-tenant-id       
         - name: PYKUBE_KUBERNETES_SERVICE_HOST
           value: 10.240.255.15
-          # value: kubernetes.default
-        - name: DATADOG_TAGS
-          value: env:sci
         command:
             - python
             - main.py
             - --resource-group 
-            - <group-name>
-            - --container-service-name 
-            - <container-service-name>           
-            - -vvv
-            - --over-provision
-            - "0"
+            - <your-group-name>
+            - --template-file-url
+            - <your-template-file-url>
+            - --parameters-file-url
+            - <your-parametes-file-url>
         imagePullPolicy: Always
       restartPolicy: Always
       dnsPolicy: Default  # Don't use cluster DNS.
