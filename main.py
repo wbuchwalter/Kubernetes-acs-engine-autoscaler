@@ -41,7 +41,6 @@ DEBUG_LOGGING_MAP = {
 @click.option("--service-principal-app-id", default=None, envvar='AZURE_SP_APP_ID')
 @click.option("--service-principal-secret", default=None, envvar='AZURE_SP_SECRET')
 @click.option("--service-principal-tenant-id", default=None, envvar='AZURE_SP_TENANT_ID')
-@click.option("--datadog-api-key", default=None, envvar='DATADOG_API_KEY')
 @click.option("--instance-init-time", default=25 * 60)
 @click.option("--no-scale", is_flag=True)
 @click.option("--no-maintenance", is_flag=True)
@@ -61,7 +60,7 @@ DEBUG_LOGGING_MAP = {
 @click.option("--debug", is_flag=True) 
 def main(container_service_name, resource_group, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret, service_principal_tenant_id,
-         datadog_api_key,idle_threshold, spare_agents,
+         idle_threshold, spare_agents,
          template_file, parameters_file, template_file_url, parameters_file_url,
          over_provision, instance_init_time, no_scale, no_maintenance,
          slack_hook, slack_bot_token, dry_run, verbose, debug):
@@ -110,13 +109,14 @@ def main(container_service_name, resource_group, sleep, kubeconfig,
                       scale_up=not no_scale,
                       maintainance=not no_maintenance,
                       over_provision=over_provision,
-                      datadog_api_key=datadog_api_key,
                       notifier=notifier,
                       dry_run=dry_run,
-                      )    
+                      )
+    cluster.login(
+        service_principal_app_id, service_principal_secret, service_principal_tenant_id)
     backoff = sleep
     while True:
-        scaled = cluster.scale_loop(debug)
+        scaled = cluster.loop(debug)
         if scaled:
             time.sleep(sleep)
             backoff = sleep

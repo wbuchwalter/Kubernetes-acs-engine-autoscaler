@@ -34,8 +34,6 @@ spec:
         - name: PYKUBE_KUBERNETES_SERVICE_HOST
           value: 10.240.255.15
           # value: kubernetes.default
-        - name: DATADOG_TAGS
-          value: env:sci
         command:
             - python
             - main.py

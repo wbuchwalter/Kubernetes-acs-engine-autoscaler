@@ -4,7 +4,6 @@ import logging
 import math
 import time
 import sys
-import datadog
 import pykube
 
 import autoscaler.azure_login as azure_login
@@ -47,35 +46,23 @@ class Cluster(object):
     UTIL_THRESHOLD = 0.3
 
 
-    def __init__(self, service_principal_app_id, service_principal_secret, service_principal_tenant_id,
-                 kubeconfig, template_file, parameters_file, template_file_url, parameters_file_url,
-                 idle_threshold, spare_agents, instance_init_time, 
+    def __init__(self, kubeconfig, template_file, parameters_file, template_file_url, 
+                 parameters_file_url, idle_threshold, spare_agents, instance_init_time, 
                  container_service_name, resource_group, notifier,
                  scale_up=True, maintainance=True,
-                 datadog_api_key=None,
                  over_provision=5, dry_run=False):
-        if kubeconfig:
-            # for using locally
-            logger.debug('Using kubeconfig %s', kubeconfig)
-            self.api = pykube.HTTPClient(
-                pykube.KubeConfig.from_file(kubeconfig))
-        else:
-            # for using on kube
-            logger.debug('Using kube service account')
-            self.api = pykube.HTTPClient(
-                pykube.KubeConfig.from_service_account())       
 
         if template_file or template_file_url:
             self.arm_template = utils.get_arm_template(template_file, template_file_url)
             self.arm_parameters = utils.get_arm_parameters(parameters_file, parameters_file_url)
-      
+
+        # config
+        self.kubeconfig = kubeconfig
         self._drained = {}
         self.container_service_name = container_service_name
         self.resource_group = resource_group
         self.agent_pools = {}
         self.pools_instance_type = {}
-
-        # config
         self.idle_threshold = idle_threshold
         self.instance_init_time = instance_init_time
         self.spare_agents = spare_agents
@@ -83,40 +70,44 @@ class Cluster(object):
         self.scale_up = scale_up
         self.maintainance = maintainance
         self.notifier = notifier
-
         self.dry_run = dry_run
-        self.deployments = Deployments()
-
+        self.deployments = Deployments()     
+    
+    def login(self, service_principal_app_id, service_principal_secret, service_principal_tenant_id):
         azure_login.login(
             service_principal_app_id,
             service_principal_secret,
-            service_principal_tenant_id)       
+            service_principal_tenant_id)
 
-        if datadog_api_key:
-            datadog.initialize(api_key=datadog_api_key)
-            logger.info('Datadog initialized')
-        self.stats = datadog.ThreadStats()
-        self.stats.start()
-
+        if self.kubeconfig:
+            # for using locally
+            logger.debug('Using kubeconfig %s', self.kubeconfig)
+            self.api = pykube.HTTPClient(
+                pykube.KubeConfig.from_file(self.kubeconfig))
+        else:
+            # for using on kube
+            logger.debug('Using kube service account')
+            self.api = pykube.HTTPClient(
+                pykube.KubeConfig.from_service_account())         
        
-    def scale_loop(self, debug):
+    def loop(self, debug):
         """
         runs one loop of scaling to current needs.
         returns True if successfully scaled.
         """
-        logger.info("++++++++++++++ Running Scaling Loop ++++++++++++++++")
+        logger.info("++++ Running Scaling Loop ++++++")
 
         if debug:
             #In debug mode, we don't want to catch error. Let the app crash explicitly
-            return self.scale_loop_logic()
+            return self.loop_logic()
         else:            
             try:
-                return self.scale_loop_logic()
+                return self.loop_logic()
             except:
                 logger.warn("Unexpected error: {}".format(sys.exc_info()[0]))
                 return False
 
-    def scale_loop_logic(self):
+    def loop_logic(self):
         pykube_nodes = pykube.Node.objects(self.api)
         if not pykube_nodes:
             logger.warn(
@@ -131,7 +122,9 @@ class Cluster(object):
             self.deployments,
             self.container_service_name,
             self.arm_template,
-            self.arm_parameters)
+            self.arm_parameters,
+            self.dry_run,
+            self.over_provision)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))
         
@@ -150,38 +143,23 @@ class Cluster(object):
         
 
         if self.scale_up:
-            logger.info(
-                "++++++++++++++ Scaling Up Begins ++++++++++++++++")
-            self.scale(
-                pods_to_schedule, all_nodes, container_service)
-            logger.info("++++++++++++++ Scaling Up Ends ++++++++++++++++")
+            logger.info("++++ Scaling Up Begins ++++++")
+            self.scale(pods_to_schedule, all_nodes, container_service)
+            logger.info("++++ Scaling Up Ends ++++++")
         if self.maintainance:
-            logger.info(
-                "++++++++++++++ Maintenance Begins ++++++++++++++++")
-            self.maintain(
-                pods_to_schedule, running_or_pending_assigned_pods, container_service)
-            logger.info("++++++++++++++ Maintenance Ends ++++++++++++++++")
+            logger.info("++++ Maintenance Begins ++++++")
+            self.maintain(pods_to_schedule, running_or_pending_assigned_pods, container_service)
+            logger.info("++++ Maintenance Ends ++++++")
 
         return True
 
-
-    def scale(self, pods_to_schedule, all_nodes, container_service):
-        """
-        scale up logic
-        """
-        logger.info("Nodes: {}".format(len(all_nodes)))
-        logger.info("To schedule: {}".format(len(pods_to_schedule)))  
-
-        #Assume all nodes are alive for now. We will need to implement a way to verify that later on, maybe when VMSS are live?
-        cached_live_nodes = all_nodes
-       
+    def get_pending_pods(self, pods, nodes):
         pending_pods = []
-        
         # for each pending & unassigned job, try to fit them on current machines or count requested
         #   resources towards future machines
-        for pod in pods_to_schedule: 
+        for pod in pods: 
             fitting = None
-            for node in cached_live_nodes:
+            for node in nodes:
                 if node.can_fit(pod.resources):
                     fitting = node
                     break
@@ -192,72 +170,19 @@ class Cluster(object):
                 logger.info("{pod} fits on {node}".format(pod=pod,
                                                             node=fitting))
         logger.info("Pending pods: {}".format(len(pending_pods)))
+
+        return pending_pods
+
+    def scale(self, pods_to_schedule, nodes, container_service):
+        """
+        scale up logic
+        """
+        logger.info("Nodes: {}".format(len(nodes)))
+        logger.info("To schedule: {}".format(len(pods_to_schedule)))  
+
+        pending_pods = self.get_pending_pods(pods_to_schedule, nodes)
         if len(pending_pods) > 0:
-            self.fulfill_pending(container_service, pending_pods)
-
-
-    def fulfill_pending(self, container_service, pods):    
-        logger.info("========= Scaling for %s pods ========", len(pods))
-
-        accounted_pods = dict((p, False) for p in pods)
-        num_unaccounted = len(pods)
-
-        new_pool_sizes = {}
-        
-
-        for pool in container_service.agent_pools:
-            new_pool_sizes[pool.name] = pool.actual_capacity
-
-            if not num_unaccounted:
-                continue
-
-            new_instance_resources = []
-            assigned_pods = []     
-            for pod, acc in accounted_pods.items():
-                if acc or not (pool.unit_capacity - pod.resources).possible:
-                    continue
-
-                found_fit = False
-                for i, instance in enumerate(new_instance_resources):
-                    if (instance - pod.resources).possible:
-                        new_instance_resources[i] = instance - pod.resources
-                        assigned_pods[i].append(pod)
-                        found_fit = True
-                        break
-                if not found_fit:
-                    new_instance_resources.append(pool.unit_capacity - pod.resources)
-                    assigned_pods.append([pod])
-
-            # new desired # machines = # running nodes + # machines required to fit jobs that don't
-            # fit on running nodes. This scaling is conservative but won't
-            # create starving
-            units_needed = len(new_instance_resources)
-            units_needed += self.over_provision        
-           
-            unavailable_units = max(0, units_needed - (pool.max_size - pool.actual_capacity))
-
-            units_requested = units_needed - unavailable_units
-
-            logger.debug("units_needed: %s", units_needed)
-            logger.debug("units_requested: %s", units_requested)        
-
-            new_capacity = pool.actual_capacity + units_requested
-            new_pool_sizes[pool.name] = new_capacity     
-            
-            logger.info("New capacity requested for pool {}: {} agents (current capacity: {} agents)".format(pool.name, new_capacity, pool.actual_capacity))  
-
-            for i in range(min(len(assigned_pods), units_requested)):
-                for pod in assigned_pods[i]:
-                    accounted_pods[pod] = True
-                    num_unaccounted -= 1
-
-            logger.debug("remaining pending: %s", num_unaccounted)
-
-        if num_unaccounted:
-            logger.warn('Failed to scale sufficiently.')
-            # self.notifier.notify_failed_to_scale(selectors_hash, pods) 
-        
-        container_service.scale_pools(new_pool_sizes, self.dry_run, True)
+            container_service.fulfill_pending(pending_pods)
 
     def get_node_state(self, node, node_pods, pods_to_schedule):
         """
@@ -345,7 +270,7 @@ class Cluster(object):
         # too much issues. Otherwise this solution will not work and will need to wait for k8s to be supported by VMSS.
         # We also have to assume that there is no undrainable and critical pod, otherwise we cannot scale down at all in many cases
 
-        logger.info("++++++++++++++ Maintaining Nodes ++++++++++++++++")        
+        logger.info("++++ Maintaining Nodes ++++++")        
 
         pods_by_node = {}
         for p in running_or_pending_assigned_pods:
@@ -383,12 +308,6 @@ class Cluster(object):
                 #With acs-engine, we can directly delete any node using Azure API
                 if trim_ended and not container_service.is_acs_engine:
                     continue
-
-                #DataDog
-                self.stats.increment(
-                    'kubernetes.custom.node.state.{}'.format(
-                        state.replace('-', '_')),
-                    timestamp=stats_time)
 
                 # state machine & why doesnt python have case?
                 if state in (ClusterNodeState.POD_PENDING, ClusterNodeState.BUSY,

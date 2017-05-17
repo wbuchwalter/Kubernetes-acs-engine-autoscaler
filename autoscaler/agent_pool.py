@@ -14,9 +14,6 @@ class AgentPool(object):
         self.name = pool_name
         self.nodes = nodes
         self.unschedulable_nodes = list(filter(lambda n: n.unschedulable, self.nodes))
-
-        
-       
         self.max_size = 100
       
     @property

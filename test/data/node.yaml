@@ -5,14 +5,10 @@ metadata:
     aws/sgs: kubernetes-worker
   creationTimestamp: "2016-08-25T05:13:16Z"
   labels:
-    aws/ami-id: ami-deadbeef
-    aws/az: us-west-2c
-    aws/class: t
-    aws/id: i-aaaaaaaa
-    aws/region: us-west-2
-    aws/type: t2.medium
-    kubernetes.io/hostname: 10.0.0.228
-  name: 10.0.0.228
+    beta.kubernetes.io/instance-type: Standard_D2_v2
+    kubernetes.io/hostname: k8s-agentpool1-16334397-0
+    role: agent
+  name: k8s-agentpool1-16334397-0
   resourceVersion: "234864209"
   selfLink: /api/v1/nodes/10.0.0.228
   uid: a0f990ae-6a82-11e6-b203-0a0bdd34364d
@@ -49,9 +45,6 @@ status:
     kubeletEndpoint:
       Port: 10250
   images:
-  - names:
-    - datadog/docker-dd-agent:kubernetes
-    sizeBytes: 301845578
   - names:
     - quay.io/openai/fluentd-aws:latest
     sizeBytes: 719088118

@@ -14,9 +14,14 @@ logger = logging.getLogger(__name__)
 
 class ContainerService(object):
 
-    def __init__(self, resource_group, nodes, deployments, container_service_name, arm_template=None, arm_parameters=None):
+    def __init__(
+        self, resource_group, nodes, deployments, dry_run, over_provision,
+        container_service_name, arm_template=None, arm_parameters=None):
+
         self.resource_group_name = resource_group
         self.deployments = deployments
+        self.dry_run = dry_run
+        self.over_provision = over_provision
             
         if container_service_name:
             self.container_service_name = container_service_name        
@@ -112,7 +117,7 @@ class ContainerService(object):
         self.deployments.deploy(lambda: self.delete_resources_for_node(node), pool_sizes)                
 
 
-    def scale_pools(self, new_pool_sizes, dry_run, is_scale_up):        
+    def scale_pools(self, new_pool_sizes, is_scale_up):        
         has_changes = False
         for pool in self.agent_pools:
             new_size = new_pool_sizes[pool.name]            
@@ -128,7 +133,7 @@ class ContainerService(object):
             else:
                 logger.info("[Dry run] Would have scaled pool '{}' to {} agent(s) (currently at {})".format(pool.name, new_size, pool.actual_capacity))
         
-        if not dry_run and has_changes:        
+        if not self.dry_run and has_changes:        
             if not self.is_acs_engine:
                 for pool in self.agent_pools:
                     self.deployments.deploy(lambda: self.set_desired_acs_agent_pool_capacity(new_pool_sizes[pool.name]), new_pool_sizes)
@@ -184,5 +189,66 @@ class ContainerService(object):
                         break;
 
         resources.pop(nsg_resource_index) 
+    
+    def fulfill_pending(self, pods):    
+        logger.info("====Scaling for %s pods ====", len(pods))
+        accounted_pods = dict((p, False) for p in pods)
+        num_unaccounted = len(pods)
+
+        new_pool_sizes = {}
+
+        for pool in self.agent_pools:
+            new_pool_sizes[pool.name] = pool.actual_capacity
+
+            if not num_unaccounted:
+                continue
+
+            new_instance_resources = []
+            assigned_pods = []     
+            for pod, acc in accounted_pods.items():
+                if acc or not (pool.unit_capacity - pod.resources).possible:
+                    continue
+
+                found_fit = False
+                for i, instance in enumerate(new_instance_resources):
+                    if (instance - pod.resources).possible:
+                        new_instance_resources[i] = instance - pod.resources
+                        assigned_pods[i].append(pod)
+                        found_fit = True
+                        break
+                if not found_fit:
+                    new_instance_resources.append(pool.unit_capacity - pod.resources)
+                    assigned_pods.append([pod])
+
+            # new desired # machines = # running nodes + # machines required to fit jobs that don't
+            # fit on running nodes. This scaling is conservative but won't
+            # create starving
+            units_needed = len(new_instance_resources)
+            units_needed += self.over_provision        
+           
+            unavailable_units = max(0, units_needed - (pool.max_size - pool.actual_capacity))
+
+            units_requested = units_needed - unavailable_units
+
+            logger.debug("units_needed: %s", units_needed)
+            logger.debug("units_requested: %s", units_requested)        
+
+            new_capacity = pool.actual_capacity + units_requested
+            new_pool_sizes[pool.name] = new_capacity     
+            
+            logger.info("New capacity requested for pool {}: {} agents (current capacity: {} agents)".format(pool.name, new_capacity, pool.actual_capacity))  
+
+            for i in range(min(len(assigned_pods), units_requested)):
+                for pod in assigned_pods[i]:
+                    accounted_pods[pod] = True
+                    num_unaccounted -= 1
+
+            logger.debug("remaining pending: %s", num_unaccounted)
+
+        if num_unaccounted:
+            logger.warn('Failed to scale sufficiently.')
+            # self.notifier.notify_failed_to_scale(selectors_hash, pods) 
+        
+        self.scale_pools(new_pool_sizes, True)
            
   
