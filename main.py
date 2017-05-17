@@ -18,7 +18,6 @@ DEBUG_LOGGING_MAP = {
 
 
 @click.command()
-@click.option("--container-service-name", default=None, help='container service name (only for ACS, not acs-engine)')
 @click.option("--resource-group")
 @click.option("--sleep", default=60)
 @click.option("--kubeconfig", default=None,
@@ -58,7 +57,7 @@ DEBUG_LOGGING_MAP = {
               count=True)
 #Debug mode will explicitly surface erros
 @click.option("--debug", is_flag=True) 
-def main(container_service_name, resource_group, sleep, kubeconfig,
+def main(resource_group, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret, service_principal_tenant_id,
          idle_threshold, spare_agents,
          template_file, parameters_file, template_file_url, parameters_file_url,
@@ -85,10 +84,6 @@ def main(container_service_name, resource_group, sleep, kubeconfig,
         logger.error('--parameters-file and --parameters-file-url are mutually exclusive.')
         sys.exit(1)
         
-    if template_file and container_service_name:
-        logger.error("--template-file and --container-service-name cannot be specified simultaneously. Provide --container-service-name when running on ACS, or --template-file and --parameters-file when running on acs-engine")
-        sys.exit(1)
-        
     notifier = None
     if slack_hook and slack_bot_token:
         notifier = Notifier(slack_hook, slack_bot_token)
@@ -101,7 +96,6 @@ def main(container_service_name, resource_group, sleep, kubeconfig,
                       idle_threshold=idle_threshold,
                       instance_init_time=instance_init_time,
                       spare_agents=spare_agents,
-                      container_service_name=container_service_name,
                       resource_group=resource_group,
                       scale_up=not no_scale,
                       maintainance=not no_maintenance,

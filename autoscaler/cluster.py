@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 class Cluster(object):
     def __init__(self, kubeconfig, template_file, parameters_file, template_file_url,
-                 parameters_file_url, idle_threshold, spare_agents, instance_init_time,
-                 container_service_name, resource_group, notifier,
+                 parameters_file_url, idle_threshold, spare_agents, 
+                 instance_init_time, resource_group, notifier,
                  scale_up=True, maintainance=True,
                  over_provision=5, dry_run=False):
 
@@ -41,7 +41,6 @@ class Cluster(object):
         # config
         self.kubeconfig = kubeconfig
         self._drained = {}
-        self.container_service_name = container_service_name
         self.resource_group = resource_group
         self.agent_pools = {}
         self.pools_instance_type = {}
@@ -194,100 +193,3 @@ class Cluster(object):
 
     def maintain(self, pods_to_schedule, running_or_pending_assigned_pods, scaler):
         scaler.maintain(pods_to_schedule, running_or_pending_assigned_pods)
-        # """
-        # maintains running instances:
-        # - determines if idle nodes should be drained and terminated
-        # """
-
-        # # In our case we cannot decide which node to terminate, we can only terminate the last one.
-        # # So our maintenance is easy: is the last node underutilized? If yes cordon, drain then kill it.
-        # # Otherwise we keep everything.
-        # # If the LB is configured for round-robbin and there is no sticky sessions, long running sessions etc... it should not pose
-        # # too much issues. Otherwise this solution will not work and will need to wait for k8s to be supported by VMSS.
-        # # We also have to assume that there is no undrainable and critical pod,
-        # # otherwise we cannot scale down at all in many cases
-
-        # logger.info("++++ Maintaining Nodes ++++++")
-
-        # pods_by_node = {}
-        # for p in running_or_pending_assigned_pods:
-        #     pods_by_node.setdefault(p.node_name, []).append(p)
-
-        # stats_time = time.time()
-
-        # trim_map = {}
-
-        # for pool in container_service.agent_pools:
-        #     # Since we can only 'trim' nodes from the end with ACS, start by the end, and so how many we should trim
-        #     # break once we find a node that should node be deleted or cordoned
-        #     nodes_to_trim = 0
-        #     # flag used to notify that we don't want to delete/drain/cordon further, but we still want to display the state of each node
-        #     # this only used for ACS, as we can delete any node we want in
-        #     # acs-engine
-        #     trim_ended = False
-        #     # maximum nomber of nodes we can drain without hitting our spare
-        #     # capacity
-        #     max_nodes_to_drain = pool.actual_capacity - self.spare_agents
-
-        #     nodes = pool.nodes.copy()
-        #     nodes.reverse()
-
-        #     for node in nodes:
-        #         state = self.get_node_state(
-        #             node, pods_by_node.get(node.name, []), pods_to_schedule)
-        #         if state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE:
-        #             # For ACS, spare agents are always the older nodes
-        #             if not container_service.is_acs_engine and node.instance_index < self.spare_agents:
-        #                 state = ClusterNodeState.SPARE_AGENT
-        #             elif container_service.is_acs_engine and max_nodes_to_drain == 0:
-        #                 state = ClusterNodeState.SPARE_AGENT
-
-        #         logger.info("node: %-*s state: %s" % (75, node, state))
-
-        #         # With ACS, if we don't want to break the SLA, we can only kill nodes starting by the most recent
-        #         # With acs-engine, we can directly delete any node using Azure
-        #         # API
-        #         if trim_ended and not container_service.is_acs_engine:
-        #             continue
-
-        #         # state machine & why doesnt python have case?
-        #         if state in (ClusterNodeState.POD_PENDING, ClusterNodeState.BUSY,
-        #                      ClusterNodeState.SPARE_AGENT):
-        #             # do nothing
-        #             trim_ended = True
-        #         elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE and (not trim_ended or container_service.is_acs_engine):
-        #             if not self.dry_run:
-        #                 node.cordon()
-        #                 node.drain(pods_by_node.get(node.name, []),
-        #                            notifier=self.notifier)
-        #             else:
-        #                 logger.info(
-        #                     '[Dry run] Would have drained and cordoned %s', node)
-        #         elif state == ClusterNodeState.IDLE_SCHEDULABLE:
-        #             if not self.dry_run:
-        #                 node.cordon()
-        #             else:
-        #                 logger.info('[Dry run] Would have cordoned %s', node)
-        #         elif state == ClusterNodeState.BUSY_UNSCHEDULABLE:
-        #             # this is duplicated in original scale logic
-        #             if not self.dry_run:
-        #                 node.uncordon()
-        #             else:
-        #                 logger.info('[Dry run] Would have uncordoned %s', node)
-        #             trim_ended = True
-        #         elif state == ClusterNodeState.IDLE_UNSCHEDULABLE:
-        #             if not self.dry_run:
-        #                 nodes_to_trim += 1
-        #                 if container_service.is_acs_engine:
-        #                     container_service.delete_node(pool, node)
-        #             else:
-        #                 logger.info('[Dry run] Would have scaled in %s', node)
-        #         elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:
-        #             # noop for now
-        #             trim_ended = True
-        #         else:
-        #             raise Exception("Unhandled state: {}".format(state))
-        #     trim_map[pool.name] = nodes_to_trim
-
-        # if not container_service.is_acs_engine and len(list(filter(lambda x: trim_map[x] > 0, trim_map))) > 0:
-        #     container_service.scale_down(trim_map, self.dry_run)

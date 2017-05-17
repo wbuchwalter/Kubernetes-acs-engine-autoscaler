@@ -43,7 +43,6 @@ class TestCluster(unittest.TestCase):
             idle_threshold=60,
             spare_agents=1,
             instance_init_time=60,
-            container_service_name=None,
             resource_group='my-rg',
             notifier=None
         )
