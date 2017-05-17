@@ -93,10 +93,7 @@ def main(container_service_name, resource_group, sleep, kubeconfig,
     if slack_hook and slack_bot_token:
         notifier = Notifier(slack_hook, slack_bot_token)
     
-    cluster = Cluster(service_principal_app_id=service_principal_app_id,
-                      service_principal_secret=service_principal_secret,
-                      service_principal_tenant_id=service_principal_tenant_id,
-                      kubeconfig=kubeconfig,
+    cluster = Cluster(kubeconfig=kubeconfig,
                       template_file=template_file,
                       template_file_url=template_file_url,
                       parameters_file_url=parameters_file_url,

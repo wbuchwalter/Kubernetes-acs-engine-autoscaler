@@ -117,14 +117,14 @@ class Cluster(object):
         all_nodes = list(filter(utils.is_agent, map(KubeNode, pykube_nodes))) 
 
         container_service = ContainerService( 
-            self.resource_group,
-            all_nodes,            
-            self.deployments,
-            self.container_service_name,
-            self.arm_template,
-            self.arm_parameters,
-            self.dry_run,
-            self.over_provision)
+            resource_group=self.resource_group,
+            nodes=all_nodes,            
+            deployments=self.deployments,
+            container_service_name=self.container_service_name,
+            arm_template=self.arm_template,
+            arm_parameters=self.arm_parameters,
+            dry_run=self.dry_run,
+            over_provision=self.over_provision)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))
         
