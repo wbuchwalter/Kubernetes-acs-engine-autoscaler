@@ -1,11 +1,12 @@
-> ### This project is a fork of [OpenAI](https://openai.com/blog/)'s [Kubernetes-ec2-autoscaler](https://github.com/openai/kubernetes-ec2-autoscaler)  
+ ## This project is a fork of [OpenAI](https://openai.com/blog/)'s [Kubernetes-ec2-autoscaler](https://github.com/openai/kubernetes-ec2-autoscaler)  
 If you need autoscaling for VMSS instead, check out [OpenAI/kubernetes-ec2-autoscaler:azure](https://github.com/openai/kubernetes-ec2-autoscaler/tree/azure) or [cluster-autoscaler](https://github.com/kubernetes/contrib/tree/master/cluster-autoscaler)
 
-# kubernetes-acs-autoscaler
+:warning: **ACS is not supported, this autoscaler is for [`acs-engine`](https://github.com/azure/acs-engine) only** :warning:
 
-kubernetes-acs-autoscaler is a node-level autoscaler for [Kubernetes](http://kubernetes.io/)
-on Azure Container Services. Kubernetes is a container orchestration framework
-that schedules Docker containers on a cluster, and kubernetes-acs-autoscaler can scale based on the pending job queue.
+# kubernetes-acs-engine-autoscaler
+
+kubernetes-acs-engine-autoscaler is a node-level autoscaler for [Kubernetes](http://kubernetes.io/) for clusters created with acs-engine.  
+Kubernetes is a container orchestration framework that schedules Docker containers on a cluster, and kubernetes-acs-autoscaler can scale based on the pending job queue.
 
 ## Architecture
 
@@ -46,8 +47,6 @@ $ kubectl create -f secret.yaml
 ```
 $ python main.py [options]
 ```
-
-- --container-service-name: Name of ACS cluster.
 - --resource-group: Name of the resource group containing the cluster
 - --template-file: [acs-engine only] Full path to the ARM template file.
 - --template-file-url: [acs-engine only] URL to the ARM template file.  
@@ -64,13 +63,9 @@ $ python main.py [options]
 - -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
 - --debug: Do not catch errors. Explicitly crash.
 
-## Autoscaling ACS  
- Pass the name of your container service to `--container-service-name`.  
- 
-## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)  
-Pass the template (azuredeploy.json) and parameter (azuredeploy.parameters.json) files that you generated with acs-engine to the autoscaler through `--template-file` and `--parameters-file` or `--template-file-url` and `--parameters-file-url`
-`--container-service-name` should be left empty as it is reserved for ACS.
 
+ ## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)  
+Pass the template (azuredeploy.json) and parameter (azuredeploy.parameters.json) files that you generated with acs-engine to the autoscaler through `--template-file` and `--parameters-file` or `--template-file-url` and `--parameters-file-url`.
 
 ### Run in-cluster
 [scaling-controller.yaml](scaling-controller.yaml) has an example
@@ -97,5 +92,6 @@ $ kubectl logs autoscaler-opnax --namespace system
 ```
 $ docker build -t autoscaler .
 $ ./devenvh.sh
-$ python main.py --resource-group k8s --container-service-name containerservice-k8s --service-principal-app-id 'XXXXXXXXX' --service-principal-secret 'XXXXXXXXXXXXX' service-principal-tenant-id 'XXXXXX' --dry-run -vvv --kubeconfig /root/.kube/config
+#in the container
+$ python main.py --resource-group k8s --service-principal-app-id 'XXXXXXXXX' --service-principal-secret 'XXXXXXXXXXXXX' service-principal-tenant-id 'XXXXXX' --dry-run -vvv --kubeconfig /root/.kube/config --template-file azuredeploy.json --parameters-file azuredeplou.parameters.json
 ```
