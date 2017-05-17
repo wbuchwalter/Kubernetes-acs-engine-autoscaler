@@ -44,31 +44,6 @@ You can then save it in Kubernetes:
 $ kubectl create -f secret.yaml
 ```
 
-## Configuration
-
-```
-$ python main.py [options]
-```
-- --resource-group: Name of the resource group containing the cluster
-- --template-file: [acs-engine only] Full path to the ARM template file.
-- --template-file-url: [acs-engine only] URL to the ARM template file.  
-- --parameters-file: [acs-engine only] Full path to the ARM parameters file. 
-- --parameters-file-url: [acs-engine only] URL to the ARM parameters file.
-- --kubeconfig: Path to kubeconfig YAML file. Leave blank if running in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
-- --service-principal-app-id: Azure service principal id. Can also be specified in environment variable `AZURE_SP_APP_ID`
-- --service-principal-secret: Azure service principal secret. Can also be specified in environment variable `AZURE_SP_SECRET`
-- --service-principal-tenant-id: Azure service princiap tenant id. Can also be specified in environment variable `AZURE_SP_TENANT_ID`
-- --over-provision: Number of cluster agents to over provision in anticipation for imminent load
-- --sleep: Time (in seconds) to sleep between scaling loops (to be careful not to run into AWS API limits)
-- --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
-- --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
-- -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
-- --debug: Do not catch errors. Explicitly crash.
-
-
- ## Autoscaling [acs-engine](https://github.com/Azure/acs-engine)  
-Pass the template (azuredeploy.json) and parameter (azuredeploy.parameters.json) files that you generated with acs-engine to the autoscaler through `--template-file` and `--parameters-file` or `--template-file-url` and `--parameters-file-url`.
-
 ### Run in-cluster
 [scaling-controller.yaml](scaling-controller.yaml) has an example
 [Replication Controller](http://kubernetes.io/docs/user-guide/replication-controller/)
@@ -79,11 +54,11 @@ $ kubectl create -f scaling-controller.yaml
 ```
 You should then be able to inspect the pod's status and logs:
 ```
-$ kubectl get pods --namespace system -l app=autoscaler
+$ kubectl get pods -l app=autoscaler
 NAME               READY     STATUS    RESTARTS   AGE
 autoscaler-opnax   1/1       Running   0          3s
 
-$ kubectl logs autoscaler-opnax --namespace system
+$ kubectl logs autoscaler-opnax 
 2016-08-25 20:36:45,985 - autoscaler.cluster - DEBUG - Using kube service account
 2016-08-25 20:36:45,987 - autoscaler.cluster - INFO - ++++++++++++++ Running Scaling Loop ++++++++++++++++
 2016-08-25 20:37:04,221 - autoscaler.cluster - INFO - ++++++++++++++ Scaling Up Begins ++++++++++++++++
@@ -97,3 +72,25 @@ $ ./devenvh.sh
 #in the container
 $ python main.py --resource-group k8s --service-principal-app-id 'XXXXXXXXX' --service-principal-secret 'XXXXXXXXXXXXX' service-principal-tenant-id 'XXXXXX' --dry-run -vvv --kubeconfig /root/.kube/config --template-file azuredeploy.json --parameters-file azuredeplou.parameters.json
 ```
+
+
+## Full List of Options
+
+```
+$ python main.py [options]
+```
+- --resource-group: Name of the resource group containing the cluster
+- --template-file: Full path to the ARM template file (if stored locally or on a Persistent Volume).
+- --template-file-url: URL to the ARM template file (if accessed via a URL).  
+- --parameters-file: Full path to the ARM parameters file (if stored locally or on a Persistent Volume). 
+- --parameters-file-url: URL to the ARM parameters file (if accessed via a URL).
+- --kubeconfig: Path to kubeconfig YAML file. Leave blank if running in Kubernetes to use [service account](http://kubernetes.io/docs/user-guide/service-accounts/).
+- --service-principal-app-id: Azure service principal id. Can also be specified in environment variable `AZURE_SP_APP_ID`
+- --service-principal-secret: Azure service principal secret. Can also be specified in environment variable `AZURE_SP_SECRET`
+- --service-principal-tenant-id: Azure service princiap tenant id. Can also be specified in environment variable `AZURE_SP_TENANT_ID`
+- --over-provision: Number of cluster agents to over provision in anticipation for imminent load
+- --sleep: Time (in seconds) to sleep between scaling loops (to be careful not to run into AWS API limits)
+- --slack-hook: Optional [Slack incoming webhook](https://api.slack.com/incoming-webhooks) for scaling notifications
+- --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
+- -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
+- --debug: Do not catch errors. Explicitly crash instead.
