@@ -31,7 +31,7 @@ DEBUG_LOGGING_MAP = {
               help='Full path to the ARM template file. Needed only if running on acs-engine (and not ACS).')
 @click.option("--template-file-url", default=None,
               help='URL to the ARM template file. Needed only if running on acs-engine (and not ACS).')
-@click.option("--over-provision", default=5)
+@click.option("--over-provision", default=0)
 #how soon after a node becomes idle should we terminate it?
 @click.option("--idle-threshold", default=600)
 

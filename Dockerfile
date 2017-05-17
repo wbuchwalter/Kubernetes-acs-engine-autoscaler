@@ -7,12 +7,14 @@ RUN apk --update add --virtual build-dependencies \
     apk add --no-cache bash git && \
     rm -rf /var/cache/apk/*
 
-COPY . /app/
+COPY requirements.txt /app/requirements.txt
 WORKDIR /app
 RUN pip install -r /app/requirements.txt
 #For some reason libffi needs to be reinstalled at the end, otherwise issues will appear
 RUN apk update
 RUN apk add libffi-dev
+
+COPY ./ /app/
 
 
 
