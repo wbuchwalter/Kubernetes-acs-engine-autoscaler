@@ -127,7 +127,7 @@ class ContainerService(object):
                 continue
             has_changes = True                
 
-            if not dry_run:
+            if not self.dry_run:
                 if new_size > pool.actual_capacity:
                     pool.reclaim_unschedulable_nodes(new_size)
             else:
