@@ -105,11 +105,11 @@ class Scaler(object):
 
         return state
 
+    #Calculate the number of new VMs needed to accomodate all pending pods
     def fulfill_pending(self, pods):
         logger.info("====Scaling for %s pods ====", len(pods))
         accounted_pods = dict((p, False) for p in pods)
         num_unaccounted = len(pods)
-
         new_pool_sizes = {}
 
         for pool in self.agent_pools:
