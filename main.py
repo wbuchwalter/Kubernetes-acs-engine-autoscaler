@@ -16,7 +16,6 @@ DEBUG_LOGGING_MAP = {
     3: logging.DEBUG
 }
 
-
 @click.command()
 @click.option("--resource-group")
 @click.option("--sleep", default=60)
@@ -31,16 +30,11 @@ DEBUG_LOGGING_MAP = {
               help='Full path to the ARM template file. Needed only if running on acs-engine (and not ACS).')
 @click.option("--template-file-url", default=None,
               help='URL to the ARM template file. Needed only if running on acs-engine (and not ACS).')
-@click.option("--over-provision", default=0)
-#how soon after a node becomes idle should we terminate it?
-@click.option("--idle-threshold", default=600)
-
 #How many agents should we keep even if the cluster is not utilized? The autoscaler will currenty break if --spare-agents == 0
 @click.option("--spare-agents", default=1) 
 @click.option("--service-principal-app-id", default=None, envvar='AZURE_SP_APP_ID')
 @click.option("--service-principal-secret", default=None, envvar='AZURE_SP_SECRET')
 @click.option("--service-principal-tenant-id", default=None, envvar='AZURE_SP_TENANT_ID')
-@click.option("--instance-init-time", default=25 * 60)
 @click.option("--no-scale", is_flag=True)
 @click.option("--no-maintenance", is_flag=True)
 @click.option("--slack-hook", default=None, envvar='SLACK_HOOK',
@@ -58,11 +52,11 @@ DEBUG_LOGGING_MAP = {
 #Debug mode will explicitly surface erros
 @click.option("--debug", is_flag=True) 
 def main(resource_group, sleep, kubeconfig,
-         service_principal_app_id, service_principal_secret, service_principal_tenant_id,
-         idle_threshold, spare_agents,
+         service_principal_app_id, service_principal_secret, 
+         service_principal_tenant_id, spare_agents,
          template_file, parameters_file, template_file_url, parameters_file_url,
-         over_provision, instance_init_time, no_scale, no_maintenance,
-         slack_hook, slack_bot_token, dry_run, verbose, debug):
+         no_scale, no_maintenance,slack_hook, slack_bot_token,
+         dry_run, verbose, debug):
     logger_handler = logging.StreamHandler(sys.stderr)
     logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(logger_handler)
@@ -87,6 +81,12 @@ def main(resource_group, sleep, kubeconfig,
     notifier = None
     if slack_hook and slack_bot_token:
         notifier = Notifier(slack_hook, slack_bot_token)
+
+
+    #Not yet implemented, so hardcoded for now
+    over_provision = 0
+    instance_init_time = 600
+    idle_threshold = 25 * 60
     
     cluster = Cluster(kubeconfig=kubeconfig,
                       template_file=template_file,

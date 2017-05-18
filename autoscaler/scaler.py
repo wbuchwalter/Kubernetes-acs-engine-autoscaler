@@ -54,7 +54,7 @@ class Scaler(object):
 
         return agent_pools
 
-    def scale_pools(self, pool_sizes, is_scale_up):
+    def scale_pools(self, pool_sizes):
         raise NotImplementedError()
 
     def get_node_state(self, node, node_pods, pods_to_schedule):
@@ -166,4 +166,4 @@ class Scaler(object):
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
             # self.notifier.notify_failed_to_scale(selectors_hash, pods)
-        self.scale_pools(new_pool_sizes, True)
+        self.scale_pools(new_pool_sizes)

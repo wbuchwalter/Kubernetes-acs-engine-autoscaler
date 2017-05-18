@@ -66,7 +66,7 @@ class TestEngineScaler(unittest.TestCase):
         engine_scaler.scale_pools = MagicMock()
 
         engine_scaler.fulfill_pending([pod])
-        engine_scaler.scale_pools.assert_called_with({'agentpool0': 2, 'agentpool1': 1}, True)
+        engine_scaler.scale_pools.assert_called_with({'agentpool0': 2, 'agentpool1': 1})
         
 
         

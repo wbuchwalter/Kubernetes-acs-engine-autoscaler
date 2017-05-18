@@ -27,23 +27,6 @@ class EngineScaler(Scaler):
         self.arm_parameters = arm_parameters
         self.arm_template = arm_template
 
-    def scale_down(self, trim_map, dry_run):
-        """
-        Scale down each agent pool (most recent nodes will be deleted first)
-        """
-        new_pool_sizes = {}
-        for pool in self.agent_pools:
-            new_agent_count = pool.actual_capacity - trim_map[pool.name]
-            if new_agent_count <= 0:
-                raise Exception(
-                    "Tried to scale down pool {} to less than 1 agent".format(pool.name))
-
-            logger.info("Scaling down pool {} by {} agents".format(
-                pool.name, trim_map[pool.name]))
-            new_pool_sizes[pool.name] = new_agent_count
-
-        self.scale_pools(new_pool_sizes, dry_run, False)
-
     def delete_resources_for_node(self, node):
         logger.info('deleting node {}'.format(node.name))
         resource_management_client = get_mgmt_service_client(
@@ -104,7 +87,7 @@ class EngineScaler(Scaler):
 
         self.delete_resources_for_node(node)
 
-    def scale_pools(self, new_pool_sizes, is_scale_up):
+    def scale_pools(self, new_pool_sizes):
         has_changes = False
         for pool in self.agent_pools:
             new_size = new_pool_sizes[pool.name]
@@ -123,21 +106,19 @@ class EngineScaler(Scaler):
                     pool.name, new_size, pool.actual_capacity))
 
         if not self.dry_run and has_changes:
-            self.deployments.deploy(lambda: self.deploy_pools(
-                new_pool_sizes, is_scale_up), new_pool_sizes)
+            self.deployments.deploy(lambda: self.deploy_pools(new_pool_sizes), new_pool_sizes)
 
-    def deploy_pools(self, new_pool_sizes, is_scale_up):
+    def deploy_pools(self, new_pool_sizes):
         from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink
 
         for pool in self.agent_pools:
-            if is_scale_up and pool.actual_capacity < new_pool_sizes[pool.name]:
+            if pool.actual_capacity < new_pool_sizes[pool.name]:
                 self.arm_parameters[pool.name +
                                     'Offset'] = {'value': pool.actual_capacity}
             self.arm_parameters[pool.name +
                                 'Count'] = {'value': new_pool_sizes[pool.name]}
 
-        if is_scale_up:
-            self.prepare_template_for_scale_up(self.arm_template)
+        self.prepare_template_for_scale_up(self.arm_template)
 
         properties = DeploymentProperties(template=self.arm_template, template_link=None,
                                           parameters=self.arm_parameters, mode='incremental')
