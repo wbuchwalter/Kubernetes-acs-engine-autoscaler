@@ -78,6 +78,7 @@ class Scaler(object):
         # https://github.com/openai/kubernetes-ec2-autoscaler/issues/23
         undrainable_list = [p for p in node_pods if not (
             p.is_drainable() or 'kube-proxy' in p.name)]
+        
         utilization = sum((p.resources for p in busy_list), KubeResource())
         under_utilized = (self.UTIL_THRESHOLD *
                           node.capacity - utilization).possible
@@ -97,6 +98,8 @@ class Scaler(object):
                 state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE
             else:
                 state = ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE
+                logger.info('Undrainable pods: {}'.format(
+                        undrainable_list))
         else:
             if node.unschedulable:
                 state = ClusterNodeState.IDLE_UNSCHEDULABLE

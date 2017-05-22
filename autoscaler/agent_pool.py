@@ -45,5 +45,11 @@ class AgentPool(object):
                     num_schedulable += 1
                     # Uncordon only what we need
                     if num_schedulable == desired_capacity:
-                        break    
+                        break
+
+    def has_node_with_index(self, index):
+        for node in self.nodes:
+            if node.index == index:
+                return True
+        return False
     

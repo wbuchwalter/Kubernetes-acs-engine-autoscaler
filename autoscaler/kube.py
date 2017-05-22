@@ -96,6 +96,7 @@ class KubeNode(object):
 
         metadata = node.obj['metadata']
         self.name = metadata['name']
+        self.index = int(self.name.split('-')[3])
         self.region, self.instance_type = self._get_instance_data()
         self.selectors = metadata['labels']
 

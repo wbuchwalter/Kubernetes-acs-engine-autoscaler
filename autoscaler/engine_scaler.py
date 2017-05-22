@@ -3,12 +3,18 @@ from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.storage import StorageManagementClient
 from azure.storage.blob import BlockBlobService
+from azure.common import AzureHttpError
 import time
+import os
 import logging
+import json
+from threading import Thread, Lock
+from copy import deepcopy
+
 import autoscaler.utils as utils
 from autoscaler.agent_pool import AgentPool
 from autoscaler.scaler import Scaler, ClusterNodeState
-from threading import Thread, Lock
+from autoscaler.template_processing import unroll_resources, delete_nsg
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +79,15 @@ class EngineScaler(Scaler):
             self.resource_group_name, account_name)
         key = keys.keys[0].value
 
-        block_blob_service = BlockBlobService(
-            account_name=account_name, account_key=key)
-        block_blob_service.delete_blob(container_name, blob_name)
+        for i in range(5):
+            try:
+                block_blob_service = BlockBlobService(
+                    account_name=account_name, account_key=key)
+                block_blob_service.delete_blob(container_name, blob_name)
+            except AzureHttpError as err:
+                print(err.message)
+                continue
+            break
 
     def delete_node(self, pool, node, lock):
         pool_sizes = {}
@@ -106,41 +118,32 @@ class EngineScaler(Scaler):
                     pool.name, new_size, pool.actual_capacity))
 
         if not self.dry_run and has_changes:
-            self.deployments.deploy(lambda: self.deploy_pools(new_pool_sizes), new_pool_sizes)
+            self.deployments.deploy(lambda: self.deploy_pools(
+                new_pool_sizes), new_pool_sizes)
 
     def deploy_pools(self, new_pool_sizes):
         from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink
 
         for pool in self.agent_pools:
-            if pool.actual_capacity < new_pool_sizes[pool.name]:
-                self.arm_parameters[pool.name +
-                                    'Offset'] = {'value': pool.actual_capacity}
-            self.arm_parameters[pool.name +
-                                'Count'] = {'value': new_pool_sizes[pool.name]}
+            #We don't need to set the offset parameter as we are directly specifying each 
+            #resource in the template instead of using Count func
+            self.arm_parameters[pool.name + 'Count'] = {'value': new_pool_sizes[pool.name]}
 
-        self.prepare_template_for_scale_up(self.arm_template)
+        template = self.prepare_template_for_scale_up(
+            self.arm_template, new_pool_sizes)
 
-        properties = DeploymentProperties(template=self.arm_template, template_link=None,
+        properties = DeploymentProperties(template=template, template_link=None,
                                           parameters=self.arm_parameters, mode='incremental')
 
         smc = get_mgmt_service_client(ResourceManagementClient)
         return smc.deployments.create_or_update(self.resource_group_name, "autoscaler-deployment", properties, raw=False)
 
-    def prepare_template_for_scale_up(self, template):
-        nsg_resource_index = -1
-        resources = template['resources']
-        for i in range(len(resources)):
-            resource_type = resources[i]['type']
-            if resource_type == 'Microsoft.Network/networkSecurityGroups':
-                nsg_resource_index = i
-            if resource_type == 'Microsoft.Network/virtualNetworks':
-                dependencies = resources[i]['dependsOn']
-                for j in range(len(dependencies)):
-                    if dependencies[j] == "[concat('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]":
-                        dependencies.pop(j)
-                        break
-
-        resources.pop(nsg_resource_index)
+    def prepare_template_for_scale_up(self, template, new_pool_sizes):
+        # These modifications are needed in order to avoid network outages when
+        # scaling up
+        template = unroll_resources(template, self.agent_pools, new_pool_sizes)
+        template = delete_nsg(template)
+        return template
 
     def maintain(self, pods_to_schedule, running_or_pending_assigned_pods):
         """
@@ -200,8 +203,7 @@ class EngineScaler(Scaler):
                     else:
                         logger.info('[Dry run] Would have scaled in %s', node)
                 elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:
-                    logger.info('Undrainable pods: {}'.format(
-                        pods_by_node.get(node.name, [])))
+                    pass
                 else:
                     raise Exception("Unhandled state: {}".format(state))
 
@@ -209,7 +211,7 @@ class EngineScaler(Scaler):
         lock = Lock()
         for item in delete_queue:
             t = Thread(target=self.delete_node,
-                        args=(item['pool'], item['node'], lock, ))
+                       args=(item['pool'], item['node'], lock, ))
             threads.append(t)
             t.start()
         for t in threads:

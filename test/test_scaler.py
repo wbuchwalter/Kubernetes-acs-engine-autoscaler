@@ -29,10 +29,10 @@ class TestScaler(unittest.TestCase):
             over_provision=0,
             spare_count=1)
 
-    def create_nodes(self, pool_size, nb_nodes):
+    def create_nodes(self, nb_pool, nb_nodes_per_pool):
         nodes = []
-        for pool_idx in range(pool_size):
-            for node_idx in range(nb_nodes):
+        for pool_idx in range(nb_pool):
+            for node_idx in range(nb_nodes_per_pool):
                 dummy_node = copy.deepcopy(self.dummy_node_ref)
                 node_name = 'k8-agentpool{}-16334397-{}'.format(pool_idx, node_idx)
                 dummy_node['metadata']['name'] = node_name
@@ -44,8 +44,8 @@ class TestScaler(unittest.TestCase):
     def test_get_agent_pools(self):
         nodes = self.create_nodes(2,1)
         scaler = self.create_scaler(nodes)
+        pools = scaler.agent_pools
         
-        pools = scaler.get_agent_pools(nodes)
         self.assertEqual(len(pools), 2)    
         self.assertEqual(pools[0].actual_capacity, 1)
         self.assertEqual(pools[1].actual_capacity, 1)

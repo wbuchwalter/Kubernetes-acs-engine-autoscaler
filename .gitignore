@@ -4,5 +4,7 @@ start.sh
 start_acs.sh
 template.yaml
 .vscode
-azuredeploy*json
+azuredeploy.json
+azuredeploy.parameters.json
+scaling-controller.custom.yaml
 secret.yaml
