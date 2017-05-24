@@ -60,6 +60,12 @@ def main(resource_group, sleep, kubeconfig,
         logger.error("Missing Azure credentials. Please provide aws-service_principal_app_id, service_principal_secret and service_principal_tenant_id.")
         sys.exit(1)
     
+    if not client_private_key:
+        logger.error('Missing client_private_key. Provide it through --client-private-key or CLIENT_PRIVATE_KEY environment variable')
+    
+    if not kubeconfig_private_key:
+        logger.error('Missing kubeconfig_private_key. Provide it through --kubeconfig-private-key or KUBECONFIG_PRIVATE_KEY environment variable')
+    
     notifier = None
     if slack_hook and slack_bot_token:
         notifier = Notifier(slack_hook, slack_bot_token)

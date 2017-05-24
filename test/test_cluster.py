@@ -36,15 +36,16 @@ class TestCluster(unittest.TestCase):
         
         self.cluster = Cluster(
             kubeconfig='~/.kube/config',
-            template_file_url=None,
-            template_file=None,
-            parameters_file_url=None,
-            parameters_file=None,
             idle_threshold=60,
             spare_agents=1,
             instance_init_time=60,
             resource_group='my-rg',
-            notifier=None
+            notifier=None,
+            service_principal_app_id='dummy',
+            service_principal_secret='dummy',
+            service_principal_tenant_id='dummy',
+            kubeconfig_private_key='dummy',
+            client_private_key='dummy'
         )
 
     def test_get_pending_pods(self):
