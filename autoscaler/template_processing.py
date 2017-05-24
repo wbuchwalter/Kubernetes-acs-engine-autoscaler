@@ -153,3 +153,13 @@ def get_new_nodes_indexes(pool, new_pool_size):
         i += 1
         idx += 1
     return indexes
+
+def delete_master_vm_extension(template):
+    resources = template['resources']
+    vm_ext_index = -1
+    for i in range(len(resources)):
+        if resources[i]['name'] == "[concat(variables('masterVMNamePrefix'), copyIndex(variables('masterOffset')),'/cse', copyIndex(variables('masterOffset')))]":
+            vm_ext_index = i
+            break
+    resources.pop(i)
+    return template

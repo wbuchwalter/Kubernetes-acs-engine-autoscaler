@@ -8,6 +8,7 @@ import time
 import os
 import logging
 import json
+import uuid
 from threading import Thread, Lock
 from copy import deepcopy
 
@@ -125,9 +126,10 @@ class EngineScaler(Scaler):
         from azure.mgmt.resource.resources.models import DeploymentProperties, TemplateLink
 
         for pool in self.agent_pools:
-            #We don't need to set the offset parameter as we are directly specifying each 
-            #resource in the template instead of using Count func
-            self.arm_parameters[pool.name + 'Count'] = {'value': new_pool_sizes[pool.name]}
+            # We don't need to set the offset parameter as we are directly specifying each
+            # resource in the template instead of using Count func
+            self.arm_parameters[pool.name +
+                                'Count'] = {'value': new_pool_sizes[pool.name]}
 
         template = self.prepare_template_for_scale_up(
             self.arm_template, new_pool_sizes)
@@ -135,8 +137,13 @@ class EngineScaler(Scaler):
         properties = DeploymentProperties(template=template, template_link=None,
                                           parameters=self.arm_parameters, mode='incremental')
 
+        deployment_id = str(uuid.uuid4()).split('-')[0]
+        deployment_name = "autoscaler-deployment-{}".format(deployment_id)
         smc = get_mgmt_service_client(ResourceManagementClient)
-        return smc.deployments.create_or_update(self.resource_group_name, "autoscaler-deployment", properties, raw=False)
+        logger.info('Deployment {} started...'.format(deployment_name))
+        return smc.deployments.create_or_update(self.resource_group_name,
+                                                deployment_name,
+                                                properties, raw=False)
 
     def prepare_template_for_scale_up(self, template, new_pool_sizes):
         # These modifications are needed in order to avoid network outages when
