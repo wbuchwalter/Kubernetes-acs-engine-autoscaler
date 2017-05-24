@@ -5,6 +5,7 @@ import math
 import time
 import sys
 import pykube
+import os
 
 from autoscaler.azure_api import login, download_parameters, download_template
 from autoscaler.engine_scaler import EngineScaler
@@ -61,6 +62,14 @@ class Cluster(object):
             self.service_principal_secret,
             self.service_principal_tenant_id)
 
+        self.arm_template = download_template(self.resource_group)
+        self.arm_parameters = download_parameters(self.resource_group)
+        #downloaded parameters do not include SecureStrings parameters, so we need to fill them manually
+        self.fill_parameters_secure_strings()
+
+        #firstConsecutiveStaticIP parameter is used as the private IP for the master
+        os.environ["PYKUBE_KUBERNETES_SERVICE_HOST"] = self.arm_parameters['firstConsecutiveStaticIP']['value']
+
         if self.kubeconfig:
             # for using locally
             logger.debug('Using kubeconfig %s', self.kubeconfig)
@@ -71,10 +80,6 @@ class Cluster(object):
             logger.debug('Using kube service account')
             self.api = pykube.HTTPClient(
                 pykube.KubeConfig.from_service_account())
-
-        self.arm_template = download_template(self.resource_group)
-        self.arm_parameters = download_parameters(self.resource_group)
-        self.fill_parameters_secure_strings()
     
     def fill_parameters_secure_strings(self):
         self.arm_parameters['kubeConfigPrivateKey'] = {'value': self.kubeconfig_private_key}
