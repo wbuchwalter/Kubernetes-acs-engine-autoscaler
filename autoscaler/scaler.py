@@ -8,8 +8,10 @@ import logging
 import autoscaler.utils as utils
 from autoscaler.agent_pool import AgentPool
 from autoscaler.kube import KubeResource
+import autoscaler.capacity as capacity
 
 logger = logging.getLogger(__name__)
+
 
 class ClusterNodeState(object):
     INSTANCE_TERMINATED = 'instance-terminated'
@@ -22,6 +24,7 @@ class ClusterNodeState(object):
     BUSY = 'busy'
     UNDER_UTILIZED_DRAINABLE = 'under-utilized-drainable'
     UNDER_UTILIZED_UNDRAINABLE = 'under-utilized-undrainable'
+
 
 class Scaler(object):
 
@@ -40,19 +43,12 @@ class Scaler(object):
         # TODO: how to handle case where cluster has 0 node? How to get unit
         # capacity?
         self.max_agent_pool_size = 100
-        self.agent_pools = self.get_agent_pools(nodes)
-
+        self.agent_pools = None
+        self.scalable_pools = None
+        self.ignored_pool_names = {}
+    
     def get_agent_pools(self, nodes):
-        pools = {}
-        for node in nodes:
-            pool_name = utils.get_pool_name(node)
-            pools.setdefault(pool_name, []).append(node)
-
-        agent_pools = []
-        for pool_name in pools:
-            agent_pools.append(AgentPool(pool_name, pools[pool_name]))
-
-        return agent_pools
+        raise NotImplementedError()
 
     def scale_pools(self, pool_sizes):
         raise NotImplementedError()
@@ -78,7 +74,7 @@ class Scaler(object):
         # https://github.com/openai/kubernetes-ec2-autoscaler/issues/23
         undrainable_list = [p for p in node_pods if not (
             p.is_drainable() or 'kube-proxy' in p.name)]
-        
+
         utilization = sum((p.resources for p in busy_list), KubeResource())
         under_utilized = (self.UTIL_THRESHOLD *
                           node.capacity - utilization).possible
@@ -98,8 +94,8 @@ class Scaler(object):
                 state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE
             else:
                 state = ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE
-                logger.info('Undrainable pods: {}'.format(
-                        undrainable_list))
+                # logger.info('Undrainable pods: {}'.format(
+                #         undrainable_list))
         else:
             if node.unschedulable:
                 state = ClusterNodeState.IDLE_UNSCHEDULABLE
@@ -108,17 +104,17 @@ class Scaler(object):
 
         return state
 
-    #Calculate the number of new VMs needed to accomodate all pending pods
+    # Calculate the number of new VMs needed to accomodate all pending pods
     def fulfill_pending(self, pods):
         logger.info("====Scaling for %s pods ====", len(pods))
         accounted_pods = dict((p, False) for p in pods)
         num_unaccounted = len(pods)
         new_pool_sizes = {}
-
-        for pool in self.agent_pools:
+        ordered_pools = capacity.order_by_cost_asc(self.agent_pools)
+        for pool in ordered_pools:
             new_pool_sizes[pool.name] = pool.actual_capacity
 
-            if not num_unaccounted:
+            if pool.name in self.ignored_pool_names or not num_unaccounted:
                 continue
 
             new_instance_resources = []
@@ -154,6 +150,8 @@ class Scaler(object):
             logger.debug("units_requested: %s", units_requested)
 
             new_capacity = pool.actual_capacity + units_requested
+            logger.debug('{} actual capacity: {} , units requested: {}'.format(
+                pool.name, pool.actual_capacity, units_requested))
             new_pool_sizes[pool.name] = new_capacity
 
             logger.info("New capacity requested for pool {}: {} agents (current capacity: {} agents)".format(

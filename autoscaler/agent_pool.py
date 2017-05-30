@@ -5,17 +5,19 @@ from azure.mgmt.compute import ComputeManagementClient
 import logging
 import autoscaler.utils as utils
 
+from autoscaler.capacity import get_capacity_for_instance_type
 
 logger = logging.getLogger(__name__)
 
 class AgentPool(object):
 
-    def __init__(self, pool_name, nodes):
+    def __init__(self, pool_name, instance_type, nodes):
         self.name = pool_name
         self.nodes = nodes
         self.unschedulable_nodes = list(filter(lambda n: n.unschedulable, self.nodes))
         self.max_size = 100
-      
+        self.instance_type = instance_type
+
     @property
     def actual_capacity(self):
         return len(self.nodes)
@@ -23,13 +25,7 @@ class AgentPool(object):
     @property
     def unit_capacity(self):
         #Within a pool, every node should have the same capacity
-        return self.nodes[0].capacity
-    
-    @property
-    def instance_type(self):
-        #TODO: when running on acs-engine, we could infer the instance type from the ARM template
-        #that would allow having pools with 0 nodes
-        return self.nodes[0].instance_type
+        return get_capacity_for_instance_type(self.instance_type)
     
     def reclaim_unschedulable_nodes(self, new_desired_capacity):
         """

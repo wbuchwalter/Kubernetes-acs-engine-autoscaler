@@ -17,7 +17,6 @@ class Deployments:
             self.requested_pool_sizes = new_pool_sizes   
             self._current_deployment = func()  
             if isinstance(self._current_deployment, AzureOperationPoller):
-                logger.info('Deployment started...')
                 self._current_deployment.wait()
                 logger.info('Deployment finished: {}'.format(self._current_deployment.result()))
             

@@ -8,3 +8,5 @@ azuredeploy.json
 azuredeploy.parameters.json
 scaling-controller.custom.yaml
 secret.yaml
+.DS_Store
+.todo

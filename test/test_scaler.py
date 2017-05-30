@@ -10,6 +10,7 @@ import pykube
 from autoscaler.kube import KubePod, KubeNode, KubeResource
 from autoscaler.scaler import Scaler
 from unittest.mock import MagicMock
+from autoscaler.utils import get_arm_template
 
 class TestScaler(unittest.TestCase):
     def setUp(self):
@@ -21,13 +22,20 @@ class TestScaler(unittest.TestCase):
         self.api = pykube.HTTPClient(pykube.KubeConfig.from_file('~/.kube/config'))
     
     def create_scaler(self, nodes):
-        return Scaler( 
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        template = get_arm_template(os.path.join(dir_path, './data/azuredeploy.cluster.json'), None)
+        parameters = get_arm_template(os.path.join(dir_path, './data/azuredeploy.cluster.parameters.json'), None)
+        return EngineScaler( 
             resource_group='my-rg',
             nodes=nodes,            
             deployments=None,
             dry_run=False,
             over_provision=0,
-            spare_count=1)
+            spare_count=1,
+            arm_parameters=parameters,
+            arm_template=template,
+            ignore_pools=''
+            )
 
     def create_nodes(self, nb_pool, nb_nodes_per_pool):
         nodes = []

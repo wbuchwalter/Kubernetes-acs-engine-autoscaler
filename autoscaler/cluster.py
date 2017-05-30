@@ -5,13 +5,15 @@ import math
 import time
 import sys
 import pykube
+import os
 
-import autoscaler.azure_login as azure_login
+from autoscaler.azure_api import login, download_parameters, download_template
 from autoscaler.engine_scaler import EngineScaler
 import autoscaler.capacity as capacity
 from autoscaler.kube import KubePod, KubeNode, KubeResource, KubePodStatus
 import autoscaler.utils as utils
 from autoscaler.deployments import Deployments
+from autoscaler.template_processing import delete_master_vm_extension
 
 # we are interested in all pods, incl. system ones
 pykube.Pod.objects.namespace = None
@@ -26,20 +28,20 @@ pykube.http.requests.packages.urllib3.connection.match_hostname = backports.ssl_
 logger = logging.getLogger(__name__)
 
 class Cluster(object):
-    def __init__(self, kubeconfig, template_file, parameters_file, template_file_url,
-                 parameters_file_url, idle_threshold, spare_agents, 
-                 instance_init_time, resource_group, notifier,
+    def __init__(self, kubeconfig, idle_threshold, spare_agents, 
+                 service_principal_app_id, service_principal_secret, service_principal_tenant_id,
+                 kubeconfig_private_key, client_private_key,
+                 instance_init_time, resource_group, notifier, ignore_pools,
                  scale_up=True, maintainance=True,
                  over_provision=5, dry_run=False):
 
-        if template_file or template_file_url:
-            self.arm_template = utils.get_arm_template(
-                template_file, template_file_url)
-            self.arm_parameters = utils.get_arm_parameters(
-                parameters_file, parameters_file_url)
-
         # config
         self.kubeconfig = kubeconfig
+        self.service_principal_app_id = service_principal_app_id
+        self.service_principal_secret = service_principal_secret
+        self.service_principal_tenant_id = service_principal_tenant_id
+        self.kubeconfig_private_key = kubeconfig_private_key,
+        self.client_private_key = client_private_key
         self._drained = {}
         self.resource_group = resource_group
         self.agent_pools = {}
@@ -53,12 +55,21 @@ class Cluster(object):
         self.notifier = notifier
         self.dry_run = dry_run
         self.deployments = Deployments()
+        self.ignore_pools = ignore_pools
 
-    def login(self, service_principal_app_id, service_principal_secret, service_principal_tenant_id):
-        azure_login.login(
-            service_principal_app_id,
-            service_principal_secret,
-            service_principal_tenant_id)
+    def login(self):
+        login(
+            self.service_principal_app_id,
+            self.service_principal_secret,
+            self.service_principal_tenant_id)
+
+        self.arm_template = download_template(self.resource_group)
+        self.arm_parameters = download_parameters(self.resource_group)
+        #downloaded parameters do not include SecureStrings parameters, so we need to fill them manually
+        self.fill_parameters_secure_strings()
+
+        #firstConsecutiveStaticIP parameter is used as the private IP for the master
+        os.environ["PYKUBE_KUBERNETES_SERVICE_HOST"] = self.arm_parameters['firstConsecutiveStaticIP']['value']
 
         if self.kubeconfig:
             # for using locally
@@ -70,6 +81,15 @@ class Cluster(object):
             logger.debug('Using kube service account')
             self.api = pykube.HTTPClient(
                 pykube.KubeConfig.from_service_account())
+    
+    def fill_parameters_secure_strings(self):
+        self.arm_parameters['kubeConfigPrivateKey'] = {'value': self.kubeconfig_private_key}
+        self.arm_parameters['clientPrivateKey'] = {'value': self.client_private_key}
+        self.arm_parameters['servicePrincipalClientId'] = {'value': self.service_principal_app_id}
+        self.arm_parameters['servicePrincipalClientSecret'] = {'value': self.service_principal_secret}
+        #This last param is actually not needed since we are going to remove the resource using it
+        self.arm_parameters['apiServerPrivateKey'] = {'value': 'dummy'}
+        self.arm_template = delete_master_vm_extension(self.arm_template)
 
     def loop(self, debug):
         """
@@ -88,6 +108,11 @@ class Cluster(object):
             except:
                 logger.warn("Unexpected error: {}".format(sys.exc_info()[0]))
                 return False
+    
+    def create_kube_node(self, node):
+        kube_node = KubeNode(node)
+        kube_node.capacity = capacity.get_capacity_for_instance_type(kube_node.instance_type)
+        return kube_node
 
     def loop_logic(self):
         pykube_nodes = pykube.Node.objects(self.api)
@@ -96,7 +121,7 @@ class Cluster(object):
                 'Failed to list nodes. Please check kube configuration. Terminating scale loop.')
             return False
 
-        all_nodes = list(filter(utils.is_agent, map(KubeNode, pykube_nodes)))
+        all_nodes = list(filter(utils.is_agent, map(self.create_kube_node, pykube_nodes)))
 
         scaler = EngineScaler(
             resource_group=self.resource_group,
@@ -105,6 +130,7 @@ class Cluster(object):
             arm_template=self.arm_template,
             arm_parameters=self.arm_parameters,
             dry_run=self.dry_run,
+            ignore_pools=self.ignore_pools,
             over_provision=self.over_provision,
             spare_count=self.spare_agents)
 
@@ -152,6 +178,8 @@ class Cluster(object):
                 logger.info("{pod} fits on {node}".format(pod=pod,
                                                           node=fitting))
         logger.info("Pending pods: {}".format(len(pending_pods)))
+        for pod in pending_pods:
+            logger.debug(pod.name)
 
         return pending_pods
 

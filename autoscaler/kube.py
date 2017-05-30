@@ -1,7 +1,6 @@
 import datetime
 import json
 import logging
-
 from dateutil.parser import parse as dateutil_parse
 import pykube.exceptions
 
@@ -100,7 +99,8 @@ class KubeNode(object):
         self.region, self.instance_type = self._get_instance_data()
         self.selectors = metadata['labels']
 
-        self.capacity = KubeResource(**node.obj['status']['capacity'])       
+        # self.capacity = KubeResource(**node.obj['status']['capacity'])       
+        self.capacity = None
         self.used_capacity = KubeResource()
         self.unschedulable = node.obj['spec'].get('unschedulable', False)
         self.creation_time = dateutil_parse(metadata['creationTimestamp'])
