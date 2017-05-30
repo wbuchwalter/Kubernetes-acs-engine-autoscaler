@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: autoscaler
-        image: wbuchwalter/kubernetes-acs-engine-autoscaler
+        image: wbuchwalter/kubernetes-acs-engine-autoscaler:0.3.0
         env:
         - name: AZURE_SP_APP_ID
           valueFrom:
@@ -30,18 +30,23 @@ spec:
           valueFrom:
             secretKeyRef:
               name: autoscaler
-              key: azure-sp-tenant-id       
-        - name: PYKUBE_KUBERNETES_SERVICE_HOST
-          value: 10.240.255.15
+              key: azure-sp-tenant-id    
+        - name: KUBECONFIG_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: kubeconfig-private-key
+        - name: CLIENT_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: client-private-key   
         command:
             - python
             - main.py
             - --resource-group 
             - <your-group-name>
-            - --template-file-url
-            - <your-template-file-url>
-            - --parameters-file-url
-            - <your-parametes-file-url>
+            - -vvv
         imagePullPolicy: Always
       restartPolicy: Always
       dnsPolicy: Default  # Don't use cluster DNS.
