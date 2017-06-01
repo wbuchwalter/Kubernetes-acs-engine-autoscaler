@@ -103,7 +103,7 @@ $ python main.py [options]
 - --debug: Do not catch errors. Explicitly crash instead.
 - --ignore-pools: names of the pools that the autoscaler should ignore, separated by a comma.
 - --spare-agents: number of agent per pool that should always stay up (default is 1)
-- --acs-deployment: the name of the deployment created in ACS. default is 'azuredeploy'
+- --acs-deployment: the name of the deployment used to deploy the kubernetes cluster initially
 
 ## Windows Machine Pools
 
