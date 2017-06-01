@@ -32,6 +32,7 @@ class Cluster(object):
                  service_principal_app_id, service_principal_secret, service_principal_tenant_id,
                  kubeconfig_private_key, client_private_key,
                  instance_init_time, resource_group, notifier, ignore_pools,
+                 acs_deployment='azuredeploy',
                  scale_up=True, maintainance=True,
                  over_provision=5, dry_run=False):
 
@@ -44,6 +45,7 @@ class Cluster(object):
         self.client_private_key = client_private_key
         self._drained = {}
         self.resource_group = resource_group
+        self.acs_deployment = acs_deployment
         self.agent_pools = {}
         self.pools_instance_type = {}
         self.idle_threshold = idle_threshold
@@ -63,8 +65,8 @@ class Cluster(object):
             self.service_principal_secret,
             self.service_principal_tenant_id)
 
-        self.arm_template = download_template(self.resource_group)
-        self.arm_parameters = download_parameters(self.resource_group)
+        self.arm_template = download_template(self.resource_group, self.acs_deployment)
+        self.arm_parameters = download_parameters(self.resource_group, self.acs_deployment)
         #downloaded parameters do not include SecureStrings parameters, so we need to fill them manually
         self.fill_parameters_secure_strings()
 

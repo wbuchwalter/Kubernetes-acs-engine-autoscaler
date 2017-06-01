@@ -34,15 +34,15 @@ def login(username, password, tenant):
         sub['cloudName'] = sub.pop('environmentName', None)
     return all_subscriptions
 
-def download_template(resource_group_name):
+def download_template(resource_group_name, acs_deployment):
     resource_management_client = get_mgmt_service_client(
             ResourceManagementClient)
-    return resource_management_client.deployments.export_template(resource_group_name, 'azuredeploy').template
+    return resource_management_client.deployments.export_template(resource_group_name, acs_deployment).template
 
-def download_parameters(resource_group_name):
+def download_parameters(resource_group_name, acs_deployment):
     resource_management_client = get_mgmt_service_client(
             ResourceManagementClient)
-    deployment = resource_management_client.deployments.get(resource_group_name, 'azuredeploy')
+    deployment = resource_management_client.deployments.get(resource_group_name, acs_deployment)
     parameters = deployment.properties.parameters
     for parameter in parameters:
         parameters[parameter].pop('type')
