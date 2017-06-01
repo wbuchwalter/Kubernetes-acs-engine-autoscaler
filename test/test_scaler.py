@@ -19,8 +19,9 @@ class TestScaler(unittest.TestCase):
             self.dummy_node_ref = yaml.load(f.read())
         with open(os.path.join(dir_path, 'data/busybox.yaml'), 'r') as f:
             self.dummy_pod = yaml.load(f.read())
-        self.api = pykube.HTTPClient(pykube.KubeConfig.from_file('~/.kube/config'))
-
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        self.api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.join(dir_path, './data/kube_config.yaml')))
+        
     def create_nodes(self, nb_pool, nb_nodes_per_pool):
         nodes = []
         for pool_idx in range(nb_pool):

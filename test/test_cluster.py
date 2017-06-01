@@ -33,8 +33,9 @@ class TestCluster(unittest.TestCase):
         
         # this isn't actually used here
         # only needed to create the KubePod object...
-        self.api = pykube.HTTPClient(pykube.KubeConfig.from_file('~/.kube/config'))
-        
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        self.api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.join(dir_path, './data/kube_config.yaml')))
+
         self.cluster = Cluster(
             kubeconfig='~/.kube/config',
             idle_threshold=60,

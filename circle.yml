@@ -1,0 +1,11 @@
+machine:
+  services:
+    - docker
+deployment:
+  production:
+    branch: master
+    commands:
+      - docker build -t wbuchwalter/kubernetes-acs-engine-autoscaler:latest .
+      - docker run -it wbuchwalter/kubernetes-acs-engine-autoscaler:latest nosetest test/
+      - docker login -u $dockerhub_username -p $dockerhub_pwd
+      - docker push wbuchwalter/kubernetes-acs-engine-autoscaler:latest
