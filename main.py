@@ -18,6 +18,7 @@ DEBUG_LOGGING_MAP = {
 
 @click.command()
 @click.option("--resource-group", help='name of the resource group hosting the acs-engine cluster')
+@click.option("--acs-deployment", help='name of the deployment in acs (default=azuredeploy)', default='azuredeploy')
 @click.option("--sleep", default=60, help='time in seconds between successive checks')
 @click.option("--kubeconfig", default=None,
               help='Full path to kubeconfig file. If not provided, '
@@ -46,7 +47,7 @@ DEBUG_LOGGING_MAP = {
               count=True, default=2)
 #Debug mode will explicitly surface erros
 @click.option("--debug", is_flag=True) 
-def main(resource_group, sleep, kubeconfig,
+def main(resource_group, acs_deployment, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret,
          kubeconfig_private_key, client_private_key, 
          service_principal_tenant_id, spare_agents,
@@ -82,6 +83,7 @@ def main(resource_group, sleep, kubeconfig,
                       instance_init_time=instance_init_time,
                       spare_agents=spare_agents,
                       resource_group=resource_group,
+                      acs_deployment=acs_deployment,
                       service_principal_app_id=service_principal_app_id,
                       service_principal_secret=service_principal_secret,
                       service_principal_tenant_id=service_principal_tenant_id,

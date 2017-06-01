@@ -55,7 +55,7 @@ You can then save it in Kubernetes:
 $ kubectl create -f secret.yaml
 ```
 
-[scaling-controller.yaml](scaling-controller.yaml) has an example
+[scaling-deployment.yaml](scaling-deployment.yaml) has an example
 [Replication Controller](http://kubernetes.io/docs/user-guide/replication-controller/)
 that will set up Kubernetes to always run exactly one copy of the autoscaler.
 To create the Replication Controller:
@@ -103,3 +103,9 @@ $ python main.py [options]
 - --debug: Do not catch errors. Explicitly crash instead.
 - --ignore-pools: names of the pools that the autoscaler should ignore, separated by a comma.
 - --spare-agents: number of agent per pool that should always stay up (default is 1)
+- --acs-deployment: the name of the deployment created in ACS. default is 'azuredeploy'
+
+## Windows Machine Pools
+
+Currently node pools with Windows machines are not supported. If a Windows pool is part of the deployment
+the autoscaler will fail even for scaling Linux-based node pools.
