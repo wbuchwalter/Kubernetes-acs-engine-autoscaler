@@ -5,9 +5,17 @@ metadata:
     aws/sgs: kubernetes-worker
   creationTimestamp: "2016-08-25T05:13:16Z"
   labels:
+    beta.kubernetes.io/arch: amd64
     beta.kubernetes.io/instance-type: Standard_D2_v2
-    kubernetes.io/hostname: k8s-agentpool1-16334397-0
+    beta.kubernetes.io/os: linux
+    failure-domain.beta.kubernetes.io/region: southcentralus
+    failure-domain.beta.kubernetes.io/zone: 0
+    kubernetes.io/hostname: k8s-cpupool-33448335-0
+    openai/cordoned-by-autoscaler: true
     role: agent
+  Annotations:
+    node.alpha.kubernetes.io/ttl: 0
+    volumes.kubernetes.io/controller-managed-attach-detach: true
   name: k8s-agentpool1-16334397-0
   resourceVersion: "234864209"
   selfLink: /api/v1/nodes/10.0.0.228

@@ -9,6 +9,7 @@ import copy
 from datetime import datetime, timedelta
 import pykube
 from autoscaler.kube import KubePod, KubeNode, KubeResource
+import autoscaler.capacity as capacity
 
 class TestCluster(unittest.TestCase):
     def setUp(self):
@@ -53,12 +54,14 @@ class TestCluster(unittest.TestCase):
         dummy_node = copy.deepcopy(self.dummy_node)
         dummy_node['metadata']['name'] = 'k8s-agentpool1-16334397-0'
         node = KubeNode(pykube.Node(self.api, dummy_node))
+        node.capacity = capacity.get_capacity_for_instance_type(node.instance_type)
         pod = KubePod(pykube.Pod(self.api, self.dummy_pod))
 
         act = self.cluster.get_pending_pods([pod], [node])
         self.assertEqual(len(act), 0)
 
         node = KubeNode(pykube.Node(self.api, dummy_node))
+        node.capacity = capacity.get_capacity_for_instance_type(node.instance_type)
         pod2 = KubePod(pykube.Pod(self.api, self.dummy_pod))
         pod3 = KubePod(pykube.Pod(self.api, self.dummy_pod))
 
