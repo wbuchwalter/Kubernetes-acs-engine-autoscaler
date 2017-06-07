@@ -5,7 +5,7 @@ machine:
 dependencies:
   override:
     - docker info
-    - docker build -t wbuchwalter/kubernetes-acs-engine-autoscaler:latest .
+    - docker build --rm=false -t wbuchwalter/kubernetes-acs-engine-autoscaler:latest .
 
 test:
   override:
@@ -15,5 +15,5 @@ deployment:
   production:
     branch: master
     commands:
-      - docker login -u $dockerhub_username -p $dockerhub_pwd
+      - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS
       - docker push wbuchwalter/kubernetes-acs-engine-autoscaler:latest
