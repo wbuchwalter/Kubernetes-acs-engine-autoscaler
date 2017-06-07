@@ -1,11 +1,19 @@
 machine:
   services:
     - docker
+
+dependencies:
+  override:
+    - docker info
+    - docker build -t wbuchwalter/kubernetes-acs-engine-autoscaler:latest .
+
+test:
+  override:
+    - docker run -it wbuchwalter/kubernetes-acs-engine-autoscaler:latest nosetests test/
+
 deployment:
   production:
     branch: master
     commands:
-      - docker build -t wbuchwalter/kubernetes-acs-engine-autoscaler:latest .
-      - docker run -it wbuchwalter/kubernetes-acs-engine-autoscaler:latest nosetest test/
       - docker login -u $dockerhub_username -p $dockerhub_pwd
       - docker push wbuchwalter/kubernetes-acs-engine-autoscaler:latest

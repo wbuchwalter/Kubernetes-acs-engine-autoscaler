@@ -1,9 +1,0 @@
-language: python
-python:
-  - "3.6"
-install:
-  - "pip install -r requirements.txt"
-  - "mkdir -p ~/.kube"
-  - "ln -s $PWD/test/data/kube_config.yaml ~/.kube/config"
-script: "nosetests test/"
-cache: pip
