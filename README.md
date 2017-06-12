@@ -59,12 +59,14 @@ $ kubectl create -f secret.yaml
 ```
 
 [scaling-deployment.yaml](scaling-deployment.yaml) has an example
-[Replication Controller](http://kubernetes.io/docs/user-guide/replication-controller/)
+[Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
 that will set up Kubernetes to always run exactly one copy of the autoscaler.
-To create the Replication Controller:
+To create the Deployment:
 ```
 $ kubectl create -f scaling-controller.yaml
 ```
+> NOTE: If you provided a custom deployment name when deploying the kubernetes cluster, then you can pass in the deployment name by adding the `--acs-deployment` flag in the command section of the yaml file. Otherwise, it will look for the default `azuredeploy` deployment.
+
 You should then be able to inspect the pod's status and logs:
 ```
 $ kubectl get pods -l app=autoscaler
@@ -110,5 +112,4 @@ $ python main.py [options]
 
 ## Windows Machine Pools
 
-Currently node pools with Windows machines are not supported. If a Windows pool is part of the deployment
-the autoscaler will fail even for scaling Linux-based node pools.
+Currently node pools with Windows machines are not supported. If a Windows pool is part of the deployment the autoscaler will fail even for scaling Linux-based node pools.
