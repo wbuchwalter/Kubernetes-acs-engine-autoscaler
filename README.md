@@ -63,7 +63,7 @@ $ kubectl create -f secret.yaml
 that will set up Kubernetes to always run exactly one copy of the autoscaler.
 To create the Deployment:
 ```
-$ kubectl create -f scaling-controller.yaml
+$ kubectl create -f scaling-deployment.yaml
 ```
 > NOTE: If you provided a custom deployment name when deploying the kubernetes cluster, then you can pass in the deployment name by adding the `--acs-deployment` flag in the command section of the yaml file. Otherwise, it will look for the default `azuredeploy` deployment.
 
