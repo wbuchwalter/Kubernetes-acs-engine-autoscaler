@@ -106,9 +106,11 @@ $ python main.py [options]
 - --dry-run: Flag for testing so resources aren't actually modified. Actions will instead be logged only.
 - -v: Sets the verbosity. Specify multiple times for more log output, e.g. `-vvv`
 - --debug: Do not catch errors. Explicitly crash instead.
-- --ignore-pools: names of the pools that the autoscaler should ignore, separated by a comma.
-- --spare-agents: number of agent per pool that should always stay up (default is 1)
-- --acs-deployment: the name of the deployment used to deploy the kubernetes cluster initially
+- --ignore-pools: Names of the pools that the autoscaler should ignore, separated by a comma.
+- --spare-agents: Number of agent per pool that should always stay up (default is 1)
+- --acs-deployment: The name of the deployment used to deploy the kubernetes cluster initially
+- --idle-threshold: Maximum duration (in seconds) an agent can stay idle before being deleted
+- --over-provision: Number of extra agents to create when scaling up, default to 0.
 
 ## Windows Machine Pools
 
