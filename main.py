@@ -25,12 +25,14 @@ DEBUG_LOGGING_MAP = {
                    'we assume that we\'re running on kubernetes.')
 #How many agents should we keep even if the cluster is not utilized? The autoscaler will currenty break if --spare-agents == 0
 @click.option("--spare-agents", default=1, help='number of agent per pool that should always stay up') 
+@click.option("--idle-threshold", default=3600)
 @click.option("--service-principal-app-id", default=None, envvar='AZURE_SP_APP_ID')
 @click.option("--service-principal-secret", default=None, envvar='AZURE_SP_SECRET')
 @click.option("--service-principal-tenant-id", default=None, envvar='AZURE_SP_TENANT_ID')
 @click.option("--kubeconfig-private-key", default=None, envvar='KUBECONFIG_PRIVATE_KEY')
 @click.option("--client-private-key", default=None, envvar='CLIENT_PRIVATE_KEY')
 @click.option("--no-scale", is_flag=True)
+@click.option("--over-provision", default=0)
 @click.option("--no-maintenance", is_flag=True)
 @click.option("--ignore-pools", default='', help='list of pools that should be ignored by the autoscaler, delimited by a comma')
 @click.option("--slack-hook", default=None, envvar='SLACK_HOOK',
@@ -50,8 +52,8 @@ DEBUG_LOGGING_MAP = {
 def main(resource_group, acs_deployment, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret,
          kubeconfig_private_key, client_private_key, 
-         service_principal_tenant_id, spare_agents,
-         no_scale, no_maintenance, ignore_pools, slack_hook, slack_bot_token,
+         service_principal_tenant_id, spare_agents, idle_threshold,
+         no_scale, over_provision, no_maintenance, ignore_pools, slack_hook, slack_bot_token,
          dry_run, verbose, debug):
     logger_handler = logging.StreamHandler(sys.stderr)
     logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -72,16 +74,12 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
     if slack_hook and slack_bot_token:
         notifier = Notifier(slack_hook, slack_bot_token)
 
-
-    #Not yet implemented, so hardcoded for now
-    over_provision = 0
     instance_init_time = 600
-    idle_threshold = 25 * 60
     
     cluster = Cluster(kubeconfig=kubeconfig,
-                      idle_threshold=idle_threshold,
                       instance_init_time=instance_init_time,
                       spare_agents=spare_agents,
+                      idle_threshold=idle_threshold,
                       resource_group=resource_group,
                       acs_deployment=acs_deployment,
                       service_principal_app_id=service_principal_app_id,

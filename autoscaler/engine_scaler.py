@@ -24,12 +24,12 @@ class EngineScaler(Scaler):
 
     def __init__(
             self, resource_group, nodes,
-            over_provision, spare_count, dry_run,
+            over_provision, spare_count, idle_threshold, dry_run,
             deployments, arm_template, arm_parameters, ignore_pools):
 
         Scaler.__init__(
             self, resource_group, nodes, over_provision,
-            spare_count, dry_run, deployments)
+            spare_count, idle_threshold, dry_run, deployments)
 
         self.arm_parameters = arm_parameters
         self.arm_template = arm_template
@@ -209,7 +209,7 @@ class EngineScaler(Scaler):
 
                 # state machine & why doesnt python have case?
                 if state in (ClusterNodeState.POD_PENDING, ClusterNodeState.BUSY,
-                             ClusterNodeState.SPARE_AGENT):
+                             ClusterNodeState.SPARE_AGENT, ClusterNodeState.GRACE_PERIOD):
                     # do nothing
                     pass
                 elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE:

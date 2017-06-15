@@ -1,10 +1,13 @@
+import time
+import datetime
+import logging
+
 from azure.cli.core.commands.client_factory import get_mgmt_service_client
 from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.storage import StorageManagementClient
 from azure.storage.blob import BlockBlobService
-import time
-import logging
+
 import autoscaler.utils as utils
 from autoscaler.agent_pool import AgentPool
 from autoscaler.kube import KubeResource
@@ -32,10 +35,11 @@ class Scaler(object):
     # under utilized and drainable
     UTIL_THRESHOLD = 0.3
 
-    def __init__(self, resource_group, nodes, over_provision, spare_count, dry_run, deployments):
+    def __init__(self, resource_group, nodes, over_provision, spare_count, idle_threshold, dry_run, deployments):
         self.resource_group_name = resource_group
         self.over_provision = over_provision
         self.spare_count = spare_count
+        self.idle_threshold = idle_threshold
         self.dry_run = dry_run
         self.deployments = deployments
 
@@ -70,6 +74,8 @@ class Scaler(object):
         # replicated
         busy_list = [p for p in node_pods if not p.is_mirrored()]
 
+        age = (datetime.datetime.now(node.creation_time.tzinfo) - node.creation_time).seconds
+
         # TODO: Fix this kube-proxy issue, see
         # https://github.com/openai/kubernetes-ec2-autoscaler/issues/23
         undrainable_list = [p for p in node_pods if not (
@@ -77,7 +83,7 @@ class Scaler(object):
 
         utilization = sum((p.resources for p in busy_list), KubeResource())
         under_utilized = (self.UTIL_THRESHOLD *
-                          node.capacity - utilization).possible
+                          node.capacity - utilization).possible 
         drainable = not undrainable_list
 
         if busy_list and not under_utilized:
@@ -89,6 +95,8 @@ class Scaler(object):
             state = ClusterNodeState.POD_PENDING
         # elif is_spare_agent:
         #     state = ClusterNodeState.SPARE_AGENT
+        elif age <= self.idle_threshold and not node.unschedulable:
+            state = ClusterNodeState.GRACE_PERIOD
         elif under_utilized and (busy_list or not node.unschedulable):
             if drainable:
                 state = ClusterNodeState.UNDER_UTILIZED_DRAINABLE

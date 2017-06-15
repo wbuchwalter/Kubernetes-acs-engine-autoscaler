@@ -48,9 +48,9 @@ class Cluster(object):
         self.acs_deployment = acs_deployment
         self.agent_pools = {}
         self.pools_instance_type = {}
-        self.idle_threshold = idle_threshold
         self.instance_init_time = instance_init_time
         self.spare_agents = spare_agents
+        self.idle_threshold = idle_threshold
         self.over_provision = over_provision
         self.scale_up = scale_up
         self.maintainance = maintainance
@@ -134,7 +134,8 @@ class Cluster(object):
             dry_run=self.dry_run,
             ignore_pools=self.ignore_pools,
             over_provision=self.over_provision,
-            spare_count=self.spare_agents)
+            spare_count=self.spare_agents,
+            idle_threshold=self.idle_threshold)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))
 
