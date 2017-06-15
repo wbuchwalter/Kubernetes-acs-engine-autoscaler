@@ -25,7 +25,7 @@ DEBUG_LOGGING_MAP = {
                    'we assume that we\'re running on kubernetes.')
 #How many agents should we keep even if the cluster is not utilized? The autoscaler will currenty break if --spare-agents == 0
 @click.option("--spare-agents", default=1, help='number of agent per pool that should always stay up') 
-@click.option("--idle-threshold", default=3600)
+@click.option("--idle-threshold", default=1800, help='time in seconds an agent can stay idle')
 @click.option("--service-principal-app-id", default=None, envvar='AZURE_SP_APP_ID')
 @click.option("--service-principal-secret", default=None, envvar='AZURE_SP_SECRET')
 @click.option("--service-principal-tenant-id", default=None, envvar='AZURE_SP_TENANT_ID')
