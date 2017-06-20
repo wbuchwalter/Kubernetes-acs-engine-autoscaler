@@ -23,6 +23,14 @@ class AgentPool(object):
         return len(self.nodes)
     
     @property
+    def available_capacity(self):
+        return len(list(filter(lambda n: not n.unschedulable, self.nodes)))
+    
+    @property
+    def selectors(self):
+        return self.nodes[0].selectors
+
+    @property
     def unit_capacity(self):
         #Within a pool, every node should have the same capacity
         return get_capacity_for_instance_type(self.instance_type)
@@ -49,3 +57,8 @@ class AgentPool(object):
                 return True
         return False
     
+    def is_match_for_selectors(self, selectors):
+        for label, value in selectors.items():
+            if self.selectors.get(label) != value:
+                return False
+        return True

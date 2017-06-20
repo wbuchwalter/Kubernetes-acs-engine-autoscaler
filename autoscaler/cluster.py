@@ -171,7 +171,7 @@ class Cluster(object):
         for pod in pods:
             fitting = None
             for node in nodes:
-                if node.can_fit(pod.resources):
+                if node.can_fit(pod.resources) and node.is_match_for_selectors(pod.selectors):
                     fitting = node
                     break
             if fitting is None:
@@ -213,6 +213,8 @@ class Cluster(object):
         for pod in pending_unassigned_pods:
             if capacity.is_possible(pod, agent_pools):
                 pods_to_schedule.append(pod)
+                # pods_to_schedule.setdefault(
+                    # utils.selectors_to_hash(pod.selectors), []).append(pod)
             else:
                 logger.warn(
                     "Pending pod %s cannot fit. "

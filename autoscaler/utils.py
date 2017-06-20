@@ -47,8 +47,6 @@ def parse_resource(resource):
         return float(resource)
     except ValueError:
         return parse_SI(resource)
-
-
 def parse_bool_label(value):
     return str(value).lower() in ('1', 'true')
 

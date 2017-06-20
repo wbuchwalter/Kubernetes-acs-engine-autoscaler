@@ -129,6 +129,12 @@ class KubeNode(object):
         logger.info("drained %s", self)
         if notifier:
             notifier.notify_drained_node(self, pods)
+    
+    def is_match_for_selectors(self, selectors):
+        for label, value in selectors.items():
+            if self.selectors.get(label) != value:
+                return False
+        return True
 
     def uncordon(self):
         if not utils.parse_bool_label(self.selectors.get(_CORDON_LABEL)):

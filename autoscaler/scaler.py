@@ -128,7 +128,7 @@ class Scaler(object):
             new_instance_resources = []
             assigned_pods = []
             for pod, acc in accounted_pods.items():
-                if acc or not (pool.unit_capacity - pod.resources).possible:
+                if acc or not (pool.unit_capacity - pod.resources).possible or not pool.is_match_for_selectors(pod.selectors):
                     continue
 
                 found_fit = False

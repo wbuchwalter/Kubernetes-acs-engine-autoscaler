@@ -193,9 +193,9 @@ class EngineScaler(Scaler):
             pods_by_node.setdefault(p.node_name, []).append(p)
 
         for pool in self.scalable_pools:
-                # maximum nomber of nodes we can drain without hiting our spare
-                # capacity
-            max_nodes_to_drain = pool.actual_capacity - self.spare_count
+            # maximum nomber of nodes we can drain without hiting our spare
+            # capacity
+            max_nodes_to_drain = pool.available_capacity - self.spare_count
 
             for node in pool.nodes:
                 state = self.get_node_state(
