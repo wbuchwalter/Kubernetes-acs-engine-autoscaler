@@ -38,7 +38,12 @@ spec:
           valueFrom:
             secretKeyRef:
               name: autoscaler
-              key: client-private-key   
+              key: client-private-key
+        - name: CA_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: ca-private-key  
         command:
             - python
             - main.py

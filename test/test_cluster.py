@@ -48,6 +48,7 @@ class TestCluster(unittest.TestCase):
             service_principal_tenant_id='dummy',
             kubeconfig_private_key='dummy',
             client_private_key='dummy',
+            ca_private_key='dummy',
             ignore_pools='',
             over_provision=0
         )
