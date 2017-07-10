@@ -15,6 +15,8 @@ import autoscaler.utils as utils
 from autoscaler.deployments import Deployments
 from autoscaler.template_processing import delete_master_vm_extension
 
+from msrestazure.azure_exceptions import CloudError
+
 # we are interested in all pods, incl. system ones
 pykube.Pod.objects.namespace = None
 
@@ -109,6 +111,8 @@ class Cluster(object):
         else:
             try:
                 return self.loop_logic()
+            except CloudError as e:
+                logger.error(e)
             except:
                 logger.warn("Unexpected error: {}".format(sys.exc_info()[0]))
                 return False

@@ -8,8 +8,10 @@ click>=6.2
 python-dateutil>=2.5.3
 cachetools>=2.0.0
 JSON-log-formatter>=0.1.0
+
 azure-cli==2.0.9
 azure.storage==0.34.0
+msrestazure==0.4.11
 
 # pykube>=0.12.0 we need master branch
 git+git://github.com/kelproject/pykube.git@8a5cd8f6babc013e11f02b9594fb534e9c58689f
