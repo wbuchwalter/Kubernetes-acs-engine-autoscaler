@@ -217,6 +217,7 @@ class EngineScaler(Scaler):
                         node.cordon()
                         node.drain(pods_by_node.get(node.name, []),
                                    notifier=None)
+                        max_nodes_to_drain -= 1
                     else:
                         logger.info(
                             '[Dry run] Would have drained and cordoned %s', node)
