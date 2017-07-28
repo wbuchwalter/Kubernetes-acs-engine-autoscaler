@@ -62,7 +62,7 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
     logger.setLevel(DEBUG_LOGGING_MAP.get(verbose, logging.CRITICAL))
 
     if not (service_principal_app_id and service_principal_secret and service_principal_tenant_id):
-        logger.error("Missing Azure credentials. Please provide aws-service_principal_app_id, service_principal_secret and service_principal_tenant_id.")
+        logger.error("Missing Azure credentials. Please provide service_principal_app_id, service_principal_secret and service_principal_tenant_id.")
         sys.exit(1)
     
     if not client_private_key:
