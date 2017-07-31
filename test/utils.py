@@ -16,4 +16,5 @@ def create_scaler(nodes):
         arm_parameters=parameters,
         arm_template=template,
         ignore_pools='',
-        idle_threshold=0)
+        idle_threshold=0,
+        notifier='')
