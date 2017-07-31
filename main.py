@@ -39,9 +39,6 @@ DEBUG_LOGGING_MAP = {
 @click.option("--slack-hook", default=None, envvar='SLACK_HOOK',
               help='Slack webhook URL. If provided, post scaling messages '
                    'to Slack.')
-@click.option("--slack-bot-token", default=None, envvar='SLACK_BOT_TOKEN',
-              help='Slack bot token. If provided, post scaling messages '
-                   'to Slack users directly.')
 @click.option("--dry-run", is_flag=True)
 @click.option('--verbose', '-v',
               help="Sets the debug noise level, specify multiple times "
@@ -54,7 +51,7 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret,
          kubeconfig_private_key, client_private_key, ca_private_key,
          service_principal_tenant_id, spare_agents, idle_threshold,
-         no_scale, over_provision, no_maintenance, ignore_pools, slack_hook, slack_bot_token,
+         no_scale, over_provision, no_maintenance, ignore_pools, slack_hook,
          dry_run, verbose, debug):
     logger_handler = logging.StreamHandler(sys.stderr)
     logger_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -75,8 +72,8 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
         logger.error('Missing ca_private_key. Provide it through --ca-private-key or CA_PRIVATE_KEY environment variable')
     
     notifier = None
-    if slack_hook and slack_bot_token:
-        notifier = Notifier(slack_hook, slack_bot_token)
+    if slack_hook:
+        notifier = Notifier(slack_hook)
 
     instance_init_time = 600
     

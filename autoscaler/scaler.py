@@ -35,13 +35,14 @@ class Scaler(object):
     # under utilized and drainable
     UTIL_THRESHOLD = 0.3
 
-    def __init__(self, resource_group, nodes, over_provision, spare_count, idle_threshold, dry_run, deployments):
+    def __init__(self, resource_group, nodes, over_provision, spare_count, idle_threshold, dry_run, deployments, notifier):
         self.resource_group_name = resource_group
         self.over_provision = over_provision
         self.spare_count = spare_count
         self.idle_threshold = idle_threshold
         self.dry_run = dry_run
         self.deployments = deployments
+        self.notifier = notifier
 
         # ACS support up to 100 agents today
         # TODO: how to handle case where cluster has 0 node? How to get unit
@@ -117,11 +118,13 @@ class Scaler(object):
         logger.info("====Scaling for %s pods ====", len(pods))
         accounted_pods = dict((p, False) for p in pods)
         num_unaccounted = len(pods)
+        current_pool_sizes = {}
         new_pool_sizes = {}
         ordered_pools = capacity.order_by_cost_asc(self.agent_pools)
         for pool in ordered_pools:
             new_pool_sizes[pool.name] = pool.actual_capacity
-
+            current_pool_sizes[pool.name] = pool.actual_capacity
+            
             if pool.name in self.ignored_pool_names or not num_unaccounted:
                 continue
 
@@ -155,6 +158,7 @@ class Scaler(object):
             units_requested = units_needed - unavailable_units
 
             logger.debug("units_needed: %s", units_needed)
+            
             logger.debug("units_requested: %s", units_requested)
 
             new_capacity = pool.actual_capacity + units_requested
@@ -174,5 +178,8 @@ class Scaler(object):
 
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
-            # self.notifier.notify_failed_to_scale(selectors_hash, pods)
+            self.notifier.notify_failed_to_scale(selectors_hash, pods)
         self.scale_pools(new_pool_sizes)
+        if self.notifier:
+            self.notifier.notify_scale(new_pool_sizes, pods, current_pool_sizes)
+        

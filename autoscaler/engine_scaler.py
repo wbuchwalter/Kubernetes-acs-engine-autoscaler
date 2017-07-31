@@ -25,11 +25,11 @@ class EngineScaler(Scaler):
     def __init__(
             self, resource_group, nodes,
             over_provision, spare_count, idle_threshold, dry_run,
-            deployments, arm_template, arm_parameters, ignore_pools):
+            deployments, arm_template, arm_parameters, ignore_pools, notifier):
 
         Scaler.__init__(
             self, resource_group, nodes, over_provision,
-            spare_count, idle_threshold, dry_run, deployments)
+            spare_count, idle_threshold, dry_run, deployments, notifier)
 
         self.arm_parameters = arm_parameters
         self.arm_template = arm_template
@@ -215,8 +215,9 @@ class EngineScaler(Scaler):
                 elif state == ClusterNodeState.UNDER_UTILIZED_DRAINABLE:
                     if not self.dry_run:
                         node.cordon()
+                        notifier = self.notifier or None
                         node.drain(pods_by_node.get(node.name, []),
-                                   notifier=None)
+                                   notifier)
                         max_nodes_to_drain -= 1
                     else:
                         logger.info(

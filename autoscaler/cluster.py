@@ -141,7 +141,8 @@ class Cluster(object):
             ignore_pools=self.ignore_pools,
             over_provision=self.over_provision,
             spare_count=self.spare_agents,
-            idle_threshold=self.idle_threshold)
+            idle_threshold=self.idle_threshold,
+            notifier=self.notifier)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))
 
