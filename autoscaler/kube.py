@@ -140,6 +140,7 @@ class KubeNode(object):
         try:
             self.original.reload()
             self.original.obj['spec']['unschedulable'] = False
+            self.original.obj['metadata']['labels'][_CORDON_LABEL] = 'false'
             self.original.update()
             logger.info("uncordoned %s", self)
             return True

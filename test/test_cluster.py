@@ -39,6 +39,7 @@ class TestCluster(unittest.TestCase):
         self.cluster = Cluster(
             kubeconfig='~/.kube/config',
             idle_threshold=60,
+            util_threshold=30,
             spare_agents=1,
             instance_init_time=60,
             resource_group='my-rg',
