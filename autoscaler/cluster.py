@@ -178,7 +178,7 @@ class Cluster(object):
         for pod in pods:
             fitting = None
             for node in nodes:
-                if node.can_fit(pod.resources):
+                if node.can_fit(pod.resources) and not node.unschedulable:
                     fitting = node
                     break
             if fitting is None:

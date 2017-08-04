@@ -139,7 +139,11 @@ class EngineScaler(Scaler):
 
             if not self.dry_run:
                 if new_size > pool.actual_capacity:
-                    pool.reclaim_unschedulable_nodes(new_size)
+                    available_size = pool.reclaim_unschedulable_nodes(new_size)
+                    if new_size == available_size:
+                        #we uncordonned enough nodes, no need to scale
+                        return
+
             else:
                 logger.info("[Dry run] Would have scaled pool '{}' to {} agent(s) (currently at {})".format(
                     pool.name, new_size, pool.actual_capacity))
@@ -222,7 +226,7 @@ class EngineScaler(Scaler):
                     else:
                         logger.info(
                             '[Dry run] Would have drained and cordoned %s', node)
-                elif state == ClusterNodeState.IDLE_SCHEDULABLE:
+                elif state in (ClusterNodeState.IDLE_SCHEDULABLE, ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE):
                     if not self.dry_run:
                         node.cordon()
                     else:
@@ -238,8 +242,6 @@ class EngineScaler(Scaler):
                         delete_queue.append({'node': node, 'pool': pool})
                     else:
                         logger.info('[Dry run] Would have scaled in %s', node)
-                elif state == ClusterNodeState.UNDER_UTILIZED_UNDRAINABLE:
-                    pass
                 else:
                     raise Exception("Unhandled state: {}".format(state))
 

@@ -179,7 +179,9 @@ class Scaler(object):
         if num_unaccounted:
             logger.warn('Failed to scale sufficiently.')
             self.notifier.notify_failed_to_scale(selectors_hash, pods)
+    
         self.scale_pools(new_pool_sizes)
+
         if self.notifier:
             self.notifier.notify_scale(new_pool_sizes, pods, current_pool_sizes)
         
