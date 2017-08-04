@@ -26,6 +26,7 @@ DEBUG_LOGGING_MAP = {
 #How many agents should we keep even if the cluster is not utilized? The autoscaler will currenty break if --spare-agents == 0
 @click.option("--spare-agents", default=1, help='number of agent per pool that should always stay up') 
 @click.option("--idle-threshold", default=1800, help='time in seconds an agent can stay idle')
+@click.option("--util-threshold", default=30, help='Utilization of a node in percent under which it is considered under utilized and should be cordoned')
 @click.option("--service-principal-app-id", default=None, envvar='AZURE_SP_APP_ID')
 @click.option("--service-principal-secret", default=None, envvar='AZURE_SP_SECRET')
 @click.option("--service-principal-tenant-id", default=None, envvar='AZURE_SP_TENANT_ID')
@@ -50,7 +51,7 @@ DEBUG_LOGGING_MAP = {
 def main(resource_group, acs_deployment, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret,
          kubeconfig_private_key, client_private_key, ca_private_key,
-         service_principal_tenant_id, spare_agents, idle_threshold,
+         service_principal_tenant_id, spare_agents, idle_threshold, util_threshold,
          no_scale, over_provision, no_maintenance, ignore_pools, slack_hook,
          dry_run, verbose, debug):
     logger_handler = logging.StreamHandler(sys.stderr)
@@ -81,6 +82,7 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
                       instance_init_time=instance_init_time,
                       spare_agents=spare_agents,
                       idle_threshold=idle_threshold,
+                      util_threshold=util_threshold,
                       resource_group=resource_group,
                       acs_deployment=acs_deployment,
                       service_principal_app_id=service_principal_app_id,

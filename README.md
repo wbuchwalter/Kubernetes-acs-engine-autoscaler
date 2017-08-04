@@ -112,6 +112,7 @@ $ python main.py [options]
 - --spare-agents: Number of agent per pool that should always stay up (default is 1)
 - --acs-deployment: The name of the deployment used to deploy the kubernetes cluster initially
 - --idle-threshold: Maximum duration (in seconds) an agent can stay idle before being deleted
+- --util-threshold: Utilization of a node in percent under which it is considered under utilized and should be cordoned
 - --over-provision: Number of extra agents to create when scaling up, default to 0.
 
 ## Windows Machine Pools

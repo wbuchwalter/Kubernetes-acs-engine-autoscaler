@@ -30,12 +30,9 @@ class ClusterNodeState(object):
 
 
 class Scaler(object):
+    # UTIL_THRESHOLD = 0.3
 
-    # the utilization threshold under which to consider a node
-    # under utilized and drainable
-    UTIL_THRESHOLD = 0.3
-
-    def __init__(self, resource_group, nodes, over_provision, spare_count, idle_threshold, dry_run, deployments, notifier):
+    def __init__(self, resource_group, nodes, over_provision, spare_count, idle_threshold, util_threshold, dry_run, deployments, notifier):
         self.resource_group_name = resource_group
         self.over_provision = over_provision
         self.spare_count = spare_count
@@ -43,6 +40,9 @@ class Scaler(object):
         self.dry_run = dry_run
         self.deployments = deployments
         self.notifier = notifier
+        # the utilization threshold under which to consider a node
+        # under utilized 
+        self.util_threshold = util_threshold / 100
 
         # ACS support up to 100 agents today
         # TODO: how to handle case where cluster has 0 node? How to get unit
@@ -83,7 +83,7 @@ class Scaler(object):
             p.is_drainable() or 'kube-proxy' in p.name)]
 
         utilization = sum((p.resources for p in busy_list), KubeResource())
-        under_utilized = (self.UTIL_THRESHOLD *
+        under_utilized = (self.util_threshold *
                           node.capacity - utilization).possible 
         drainable = not undrainable_list
 

@@ -30,7 +30,7 @@ pykube.http.requests.packages.urllib3.connection.match_hostname = backports.ssl_
 logger = logging.getLogger(__name__)
 
 class Cluster(object):
-    def __init__(self, kubeconfig, idle_threshold, spare_agents, 
+    def __init__(self, kubeconfig, idle_threshold, util_threshold, spare_agents, 
                  service_principal_app_id, service_principal_secret, service_principal_tenant_id,
                  kubeconfig_private_key, client_private_key, ca_private_key,
                  instance_init_time, resource_group, notifier, ignore_pools,
@@ -54,6 +54,7 @@ class Cluster(object):
         self.instance_init_time = instance_init_time
         self.spare_agents = spare_agents
         self.idle_threshold = idle_threshold
+        self.util_threshold = util_threshold
         self.over_provision = over_provision
         self.scale_up = scale_up
         self.maintainance = maintainance
@@ -113,8 +114,8 @@ class Cluster(object):
                 return self.loop_logic()
             except CloudError as e:
                 logger.error(e)
-            except:
-                logger.warn("Unexpected error: {}".format(sys.exc_info()[0]))
+            except BaseException as e:
+                logger.warn("Unexpected error: {}".format(e))
                 return False
     
     def create_kube_node(self, node):
@@ -142,6 +143,7 @@ class Cluster(object):
             over_provision=self.over_provision,
             spare_count=self.spare_agents,
             idle_threshold=self.idle_threshold,
+            util_threshold=self.util_threshold,
             notifier=self.notifier)
 
         pods = list(map(KubePod, pykube.Pod.objects(self.api)))

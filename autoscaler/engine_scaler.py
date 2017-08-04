@@ -19,17 +19,16 @@ from autoscaler.template_processing import prepare_template_for_scale_out
 
 logger = logging.getLogger(__name__)
 
-
 class EngineScaler(Scaler):
 
     def __init__(
             self, resource_group, nodes,
-            over_provision, spare_count, idle_threshold, dry_run,
+            over_provision, spare_count, idle_threshold, util_threshold, dry_run,
             deployments, arm_template, arm_parameters, ignore_pools, notifier):
 
         Scaler.__init__(
             self, resource_group, nodes, over_provision,
-            spare_count, idle_threshold, dry_run, deployments, notifier)
+            spare_count, idle_threshold, util_threshold, dry_run, deployments, notifier)
 
         self.arm_parameters = arm_parameters
         self.arm_template = arm_template
