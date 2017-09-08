@@ -67,13 +67,23 @@ class EngineScaler(Scaler):
         compute_management_client = get_mgmt_service_client(
             ComputeManagementClient)
 
-        # save disk location
         vm_details = compute_management_client.virtual_machines.get(
             self.resource_group_name, node.name, None)
-        storage_infos = vm_details.storage_profile.os_disk.vhd.uri.split('/')
-        account_name = storage_infos[2].split('.')[0]
-        container_name = storage_infos[3]
-        blob_name = storage_infos[4]
+        os_disk = vm_details.storage_profile.os_disk
+
+        managed_disk_name = None
+        account_name = None
+        container_name = None
+        blob_name = None
+
+        # save disk location
+        if os_disk.managed_disk:
+            managed_disk_name = os_disk.name
+        else:
+            storage_infos = vm_details.storage_profile.os_disk.vhd.uri.split('/')
+            account_name = storage_infos[2].split('.')[0]
+            container_name = storage_infos[3]
+            blob_name = storage_infos[4]
 
         # delete vm
         logger.info('Deleting VM for {}'.format(node.name))
@@ -97,24 +107,28 @@ class EngineScaler(Scaler):
                                                                     nic_name,
                                                                     '2016-03-30')
         delete_nic_op.wait()
-
+        
         # delete os blob
         logger.info('Deleting OS disk for {}'.format(node.name))
-        storage_management_client = get_mgmt_service_client(
-            StorageManagementClient)
-        keys = storage_management_client.storage_accounts.list_keys(
-            self.resource_group_name, account_name)
-        key = keys.keys[0].value
+        if os_disk.managed_disk:
+            delete_managed_disk_op = compute_management_client.disks.delete(self.resource_group_name, managed_disk_name)
+            delete_managed_disk_op.wait()
+        else:        
+            storage_management_client = get_mgmt_service_client(
+                StorageManagementClient)
+            keys = storage_management_client.storage_accounts.list_keys(
+                self.resource_group_name, account_name)
+            key = keys.keys[0].value
 
-        for i in range(5):
-            try:
-                block_blob_service = BlockBlobService(
-                    account_name=account_name, account_key=key)
-                block_blob_service.delete_blob(container_name, blob_name)
-            except AzureHttpError as err:
-                print(err.message)
-                continue
-            break
+            for i in range(5):
+                try:
+                    block_blob_service = BlockBlobService(
+                        account_name=account_name, account_key=key)
+                    block_blob_service.delete_blob(container_name, blob_name)
+                except AzureHttpError as err:
+                    print(err.message)
+                    continue
+                break
 
     def delete_node(self, pool, node, lock):
         pool_sizes = {}
