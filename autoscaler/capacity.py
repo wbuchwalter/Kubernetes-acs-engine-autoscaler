@@ -35,3 +35,6 @@ def order_by_cost_asc(agent_pools):
     keys = list(data.keys())
     return sorted(agent_pools, key=lambda x: keys.index(x.instance_type))
 
+def order(agent_pools):
+    keys = list(data.keys())
+    return sorted(agent_pools, key=lambda x: keys.index(x.instance_type) + x.actual_capacity() / 100.0)
