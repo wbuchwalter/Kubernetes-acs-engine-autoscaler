@@ -182,6 +182,13 @@ def delete_nsg(template):
                 if dependencies[j] == "[concat('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]":
                     dependencies.pop(j)
                     break
+        # Delete any dependency on the NSG for Custom VNet
+        if resource_type == 'Microsoft.Network/networkInterfaces':
+            dependencies = resources[i]['dependsOn']
+            for j in range(len(dependencies)):
+                if dependencies[j] == "[variables('nsgID')]":
+                    dependencies.pop(j)
+                    break
     resources.pop(nsg_resource_index)
     return template
 
