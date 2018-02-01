@@ -31,8 +31,9 @@ logger = logging.getLogger(__name__)
 
 class Cluster(object):
     def __init__(self, kubeconfig, idle_threshold, spare_agents, 
-                 service_principal_app_id, service_principal_secret, service_principal_tenant_id,
+                 service_principal_app_id, service_principal_secret, service_principal_tenant_id, subscription_id,
                  kubeconfig_private_key, client_private_key, ca_private_key,
+                 etcd_client_private_key, etcd_server_private_key,
                  instance_init_time, resource_group, notifier, ignore_pools,
                  acs_deployment='azuredeploy',
                  scale_up=True, maintainance=True,
@@ -43,9 +44,12 @@ class Cluster(object):
         self.service_principal_app_id = service_principal_app_id
         self.service_principal_secret = service_principal_secret
         self.service_principal_tenant_id = service_principal_tenant_id
+        self.subscription_id = subscription_id
         self.kubeconfig_private_key = kubeconfig_private_key
         self.client_private_key = client_private_key
         self.ca_private_key = ca_private_key
+        self.etcd_client_private_key = etcd_client_private_key
+        self.etcd_server_private_key = etcd_server_private_key
         self._drained = {}
         self.resource_group = resource_group
         self.acs_deployment = acs_deployment
@@ -66,7 +70,8 @@ class Cluster(object):
         subscriptions = login(
             self.service_principal_app_id,
             self.service_principal_secret,
-            self.service_principal_tenant_id)
+            self.service_principal_tenant_id,
+            self.subscription_id)
 
         self.arm_template = download_template(self.resource_group, self.acs_deployment)
         self.arm_parameters = download_parameters(self.resource_group, self.acs_deployment)
@@ -91,6 +96,8 @@ class Cluster(object):
         self.arm_parameters['kubeConfigPrivateKey'] = {'value': self.kubeconfig_private_key}
         self.arm_parameters['clientPrivateKey'] = {'value': self.client_private_key}
         self.arm_parameters['caPrivateKey'] = {'value': self.ca_private_key}
+        self.arm_parameters['etcdClientPrivateKey'] = {'value': self.etcd_client_private_key}
+        self.arm_parameters['etcdServerPrivateKey'] = {'value': self.etcd_server_private_key}
         self.arm_parameters['servicePrincipalClientId'] = {'value': self.service_principal_app_id}
         self.arm_parameters['servicePrincipalClientSecret'] = {'value': self.service_principal_secret}
         #This last param is actually not needed since we are going to remove the resource using it

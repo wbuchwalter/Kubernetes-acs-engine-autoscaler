@@ -43,7 +43,24 @@ spec:
           valueFrom:
             secretKeyRef:
               name: autoscaler
-              key: ca-private-key  
+              key: ca-private-key
+        # for acs-engine >= 0.12.0 only
+        - name: ETCD_CLIENT_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: etcd-client-private-key
+        # for acs-engine >= 0.12.0 only      
+        - name: ETCD_SERVER_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: etcd-server-private-key
+        - name: SUBSCRIPTION_ID
+          valueFrom:
+            secretKeyRef:
+              name: autoscaler
+              key: subscription-id
         command:
             - python
             - main.py

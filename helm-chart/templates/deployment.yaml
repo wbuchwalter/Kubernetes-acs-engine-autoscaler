@@ -3,6 +3,7 @@ apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
   name: {{ template "fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
 {{ include "labels.standard" . | indent 4 }}
 spec:
@@ -13,6 +14,9 @@ spec:
 {{ include "labels.standard" . | indent 8 }}
         openai/do-not-drain: "true"
     spec:
+{{- if .Values.rbac.install }}
+      serviceAccountName: acs-engine-autoscaler
+{{- end }}
       containers:
       - name: {{ template "fullname" . }}
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -32,6 +36,11 @@ spec:
             secretKeyRef:
               name: {{ template "fullname" . }}
               key: azure-sp-tenant-id
+        - name: SUBSCRIPTION_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "fullname" . }}
+              key: subscription-id
         - name: KUBECONFIG_PRIVATE_KEY
           valueFrom:
             secretKeyRef:
@@ -47,6 +56,16 @@ spec:
             secretKeyRef:
               name: {{ template "fullname" . }}
               key: ca-private-key
+        - name: ETCD_CLIENT_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "fullname" .}}
+              key: etcd-client-private-key
+        - name: ETCD_SERVER_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "fullname" .}}
+              key: etcd-server-private-key
         command:
             - python
             - main.py
@@ -77,6 +96,7 @@ spec:
             - {{ .Values.acsenginecluster.overprovision | quote }}
             {{- end }}
             - -vvv
+            - --debug
         imagePullPolicy: {{ .Values.image.pullPolicy }}
       restartPolicy: Always
       dnsPolicy: Default

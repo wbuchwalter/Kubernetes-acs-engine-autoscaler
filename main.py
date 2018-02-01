@@ -29,9 +29,12 @@ DEBUG_LOGGING_MAP = {
 @click.option("--service-principal-app-id", default=None, envvar='AZURE_SP_APP_ID')
 @click.option("--service-principal-secret", default=None, envvar='AZURE_SP_SECRET')
 @click.option("--service-principal-tenant-id", default=None, envvar='AZURE_SP_TENANT_ID')
+@click.option("--subscription-id", default=None, envvar='SUBSCRIPTION_ID')
 @click.option("--kubeconfig-private-key", default=None, envvar='KUBECONFIG_PRIVATE_KEY')
 @click.option("--client-private-key", default=None, envvar='CLIENT_PRIVATE_KEY')
 @click.option("--ca-private-key", default=None, envvar='CA_PRIVATE_KEY')
+@click.option("--etcd-client-private-key", default=None, envvar='ETCD_CLIENT_PRIVATE_KEY')
+@click.option("--etcd-server-private-key", default=None, envvar='ETCD_SERVER_PRIVATE_KEY')
 @click.option("--no-scale", is_flag=True)
 @click.option("--over-provision", default=0)
 @click.option("--no-maintenance", is_flag=True)
@@ -48,8 +51,9 @@ DEBUG_LOGGING_MAP = {
 #Debug mode will explicitly surface erros
 @click.option("--debug", is_flag=True) 
 def main(resource_group, acs_deployment, sleep, kubeconfig,
-         service_principal_app_id, service_principal_secret,
+         service_principal_app_id, service_principal_secret, subscription_id, 
          kubeconfig_private_key, client_private_key, ca_private_key,
+         etcd_client_private_key, etcd_server_private_key,
          service_principal_tenant_id, spare_agents, idle_threshold,
          no_scale, over_provision, no_maintenance, ignore_pools, slack_hook,
          dry_run, verbose, debug):
@@ -58,8 +62,8 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
     logger.addHandler(logger_handler)
     logger.setLevel(DEBUG_LOGGING_MAP.get(verbose, logging.CRITICAL))
 
-    if not (service_principal_app_id and service_principal_secret and service_principal_tenant_id):
-        logger.error("Missing Azure credentials. Please provide service_principal_app_id, service_principal_secret and service_principal_tenant_id.")
+    if not (service_principal_app_id and service_principal_secret and service_principal_tenant_id and subscription_id):
+        logger.error("Missing Azure credentials. Please provide service_principal_app_id, service_principal_secret, service_principal_tenant_id and subscription_id.")
         sys.exit(1)
     
     if not client_private_key:
@@ -70,6 +74,7 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
     
     if not ca_private_key:
         logger.error('Missing ca_private_key. Provide it through --ca-private-key or CA_PRIVATE_KEY environment variable')
+    
     
     notifier = None
     if slack_hook:
@@ -86,9 +91,12 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
                       service_principal_app_id=service_principal_app_id,
                       service_principal_secret=service_principal_secret,
                       service_principal_tenant_id=service_principal_tenant_id,
+                      subscription_id=subscription_id,
                       kubeconfig_private_key=kubeconfig_private_key,
                       client_private_key=client_private_key,
                       ca_private_key=ca_private_key,
+                      etcd_client_private_key=etcd_client_private_key,
+                      etcd_server_private_key=etcd_server_private_key,
                       scale_up=not no_scale,
                       ignore_pools=ignore_pools,
                       maintainance=not no_maintenance,

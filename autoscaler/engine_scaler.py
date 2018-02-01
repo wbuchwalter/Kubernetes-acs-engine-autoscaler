@@ -1,9 +1,3 @@
-from azure.cli.core.commands.client_factory import get_mgmt_service_client
-from azure.mgmt.resource.resources import ResourceManagementClient
-from azure.mgmt.compute import ComputeManagementClient
-from azure.mgmt.storage import StorageManagementClient
-from azure.storage.blob import BlockBlobService
-from azure.common import AzureHttpError
 import time
 import os
 import logging
@@ -16,6 +10,7 @@ import autoscaler.utils as utils
 from autoscaler.agent_pool import AgentPool
 from autoscaler.scaler import Scaler, ClusterNodeState
 from autoscaler.template_processing import prepare_template_for_scale_out
+from autoscaler.azure_api import delete_resources_for_node, create_deployment
 
 logger = logging.getLogger(__name__)
 
@@ -60,76 +55,6 @@ class EngineScaler(Scaler):
 
         return agent_pools, scalable_pools
 
-    def delete_resources_for_node(self, node):
-        logger.info('deleting node {}'.format(node.name))
-        resource_management_client = get_mgmt_service_client(
-            ResourceManagementClient)
-        compute_management_client = get_mgmt_service_client(
-            ComputeManagementClient)
-
-        vm_details = compute_management_client.virtual_machines.get(
-            self.resource_group_name, node.name, None)
-        os_disk = vm_details.storage_profile.os_disk
-
-        managed_disk_name = None
-        account_name = None
-        container_name = None
-        blob_name = None
-
-        # save disk location
-        if os_disk.managed_disk:
-            managed_disk_name = os_disk.name
-        else:
-            storage_infos = vm_details.storage_profile.os_disk.vhd.uri.split('/')
-            account_name = storage_infos[2].split('.')[0]
-            container_name = storage_infos[3]
-            blob_name = storage_infos[4]
-
-        # delete vm
-        logger.info('Deleting VM for {}'.format(node.name))
-        delete_vm_op = resource_management_client.resources.delete(self.resource_group_name,
-                                                                   'Microsoft.Compute',
-                                                                   '',
-                                                                   'virtualMachines',
-                                                                   node.name,
-                                                                   '2016-03-30')
-        delete_vm_op.wait()
-
-        # delete nic
-        logger.info('Deleting NIC for {}'.format(node.name))
-        name_parts = node.name.split('-')
-        nic_name = '{}-{}-{}-nic-{}'.format(
-            name_parts[0], name_parts[1], name_parts[2], name_parts[3])
-        delete_nic_op = resource_management_client.resources.delete(self.resource_group_name,
-                                                                    'Microsoft.Network',
-                                                                    '',
-                                                                    'networkInterfaces',
-                                                                    nic_name,
-                                                                    '2016-03-30')
-        delete_nic_op.wait()
-        
-        # delete os blob
-        logger.info('Deleting OS disk for {}'.format(node.name))
-        if os_disk.managed_disk:
-            delete_managed_disk_op = compute_management_client.disks.delete(self.resource_group_name, managed_disk_name)
-            delete_managed_disk_op.wait()
-        else:        
-            storage_management_client = get_mgmt_service_client(
-                StorageManagementClient)
-            keys = storage_management_client.storage_accounts.list_keys(
-                self.resource_group_name, account_name)
-            key = keys.keys[0].value
-
-            for i in range(5):
-                try:
-                    block_blob_service = BlockBlobService(
-                        account_name=account_name, account_key=key)
-                    block_blob_service.delete_blob(container_name, blob_name)
-                except AzureHttpError as err:
-                    print(err.message)
-                    continue
-                break
-
     def delete_node(self, pool, node, lock):
         pool_sizes = {}
         with lock:
@@ -138,7 +63,7 @@ class EngineScaler(Scaler):
             pool_sizes[pool.name] = pool.actual_capacity - 1
             self.deployments.requested_pool_sizes = pool_sizes
 
-        self.delete_resources_for_node(node)
+        delete_resources_for_node(node, self.resource_group_name)
 
     def scale_pools(self, new_pool_sizes):
         has_changes = False
@@ -186,12 +111,11 @@ class EngineScaler(Scaler):
                                           parameters=self.arm_parameters, mode='incremental')
 
         deployment_id = str(uuid.uuid4()).split('-')[0]
-        deployment_name = "autoscaler-deployment-{}".format(deployment_id)
-        smc = get_mgmt_service_client(ResourceManagementClient)
+        deployment_name = "autoscaler-deployment-{}".format(deployment_id)       
         logger.info('Deployment {} started...'.format(deployment_name))
-        return smc.deployments.create_or_update(self.resource_group_name,
-                                                deployment_name,
-                                                properties, raw=False)
+        return create_deployment(self.resource_group_name,
+                                    deployment_name,
+                                    properties)
 
     def maintain(self, pods_to_schedule, running_or_pending_assigned_pods):
         """
