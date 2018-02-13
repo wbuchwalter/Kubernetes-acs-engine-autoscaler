@@ -1,6 +1,6 @@
 image:
   repository: wbuchwalter/kubernetes-acs-engine-autoscaler
-  tag: 2.1.1
+  tag: latest
   pullPolicy: IfNotPresent
 rbac:
   install: false
@@ -16,7 +16,7 @@ acsenginecluster:
   caprivatekey:
   ## Etcd private keys are needed for acs-engine >= 0.12.0 
   #etcdclientprivateKey: 
-  #etcdServerprivateKey: 
+  #etcdserverprivateKey: 
 
   ## Optional parameter for deployment name if not using default
   #acsdeployment:
