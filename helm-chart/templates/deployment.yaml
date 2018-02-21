@@ -66,6 +66,11 @@ spec:
             secretKeyRef:
               name: {{ template "fullname" .}}
               key: etcd-server-private-key
+        - name: ETCD_PEER_PRIVATE_KEY_0
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "fullname" .}}
+              key: etcd-peer-private-key-0
         command:
             - python
             - main.py

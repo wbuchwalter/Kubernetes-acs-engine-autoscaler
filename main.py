@@ -35,6 +35,7 @@ DEBUG_LOGGING_MAP = {
 @click.option("--ca-private-key", default=None, envvar='CA_PRIVATE_KEY')
 @click.option("--etcd-client-private-key", default=None, envvar='ETCD_CLIENT_PRIVATE_KEY')
 @click.option("--etcd-server-private-key", default=None, envvar='ETCD_SERVER_PRIVATE_KEY')
+@click.option("--etcd-peer-private-key-0", default=None, envvar='ETCD_PEER_PRIVATE_KEY_0')
 @click.option("--no-scale", is_flag=True)
 @click.option("--over-provision", default=0)
 @click.option("--no-maintenance", is_flag=True)
@@ -53,7 +54,7 @@ DEBUG_LOGGING_MAP = {
 def main(resource_group, acs_deployment, sleep, kubeconfig,
          service_principal_app_id, service_principal_secret, subscription_id, 
          kubeconfig_private_key, client_private_key, ca_private_key,
-         etcd_client_private_key, etcd_server_private_key,
+         etcd_client_private_key, etcd_server_private_key, etcd_peer_private_key_0,
          service_principal_tenant_id, spare_agents, idle_threshold,
          no_scale, over_provision, no_maintenance, ignore_pools, slack_hook,
          dry_run, verbose, debug):
@@ -97,6 +98,7 @@ def main(resource_group, acs_deployment, sleep, kubeconfig,
                       ca_private_key=ca_private_key,
                       etcd_client_private_key=etcd_client_private_key,
                       etcd_server_private_key=etcd_server_private_key,
+                      etcd_peer_private_key_0=etcd_peer_private_key_0,
                       scale_up=not no_scale,
                       ignore_pools=ignore_pools,
                       maintainance=not no_maintenance,

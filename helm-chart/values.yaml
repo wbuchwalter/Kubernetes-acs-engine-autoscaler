@@ -16,7 +16,8 @@ acsenginecluster:
   caprivatekey:
   ## Etcd private keys are needed for acs-engine >= 0.12.0 
   #etcdclientprivateKey: 
-  #etcdserverprivateKey: 
+  #etcdserverprivateKey:
+  #etcdpeerprivateKey0
 
   ## Optional parameter for deployment name if not using default
   #acsdeployment:
