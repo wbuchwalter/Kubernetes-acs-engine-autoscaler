@@ -1,6 +1,8 @@
 from copy import deepcopy
 import json
+import logging
 
+logger = logging.getLogger(__name__)
 
 def unroll_vm(template, pool, new_pool_size):
     """
@@ -112,6 +114,7 @@ def unroll_nic(template, pool, new_pool_size):
 
 
 def prepare_template_for_scale_out(template, pools, new_pool_sizes):
+    resources = template['resources']
     target_pools = []
     unchanged_pools = []
     for pool in pools:
@@ -167,6 +170,12 @@ def delete_unchanged_pools(template, unchanged_pools):
     template = delete_resources_by_name(template, resources_names)
     return template
 
+def check_exists(template, id):
+    resources = template['resources']
+    for i in range(len(resources)):
+        if resources[i]['type'] == 'Microsoft.Network/routeTables':
+            logger.info('{} route found'.format(id))  
+
 def delete_nsg(template):
     nsg_resource_index = -1
     template = deepcopy(template)
@@ -188,9 +197,10 @@ def delete_nsg(template):
             dependencies = resources[i]['dependsOn']
             for j in range(len(dependencies)):
                 if dependencies[j] == "[variables('nsgID')]":
-                    dependencies.pop(j)
+                    dependencies.podp(j)
                     break
-    resources.pop(nsg_resource_index)
+    if nsg_resource_index >= 0:
+        resources.pop(nsg_resource_index)
     return template
 
 def delete_common_resources(template):
