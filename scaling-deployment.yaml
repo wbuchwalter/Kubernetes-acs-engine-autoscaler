@@ -29,11 +29,6 @@ spec:
             secretKeyRef:
               name: autoscaler
               key: azure-sp-tenant-id    
-        - name: KUBECONFIG_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: autoscaler
-              key: kubeconfig-private-key
         - name: CLIENT_PRIVATE_KEY
           valueFrom:
             secretKeyRef:
@@ -44,18 +39,6 @@ spec:
             secretKeyRef:
               name: autoscaler
               key: ca-private-key
-        # for acs-engine >= 0.12.0 only
-        - name: ETCD_CLIENT_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: autoscaler
-              key: etcd-client-private-key
-        # for acs-engine >= 0.12.0 only      
-        - name: ETCD_SERVER_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: autoscaler
-              key: etcd-server-private-key
         - name: SUBSCRIPTION_ID
           valueFrom:
             secretKeyRef:
