@@ -1,4 +1,4 @@
-{{- if and .Values.acsenginecluster.resourcegroup .Values.acsenginecluster.azurespappid .Values.acsenginecluster.azurespsecret .Values.acsenginecluster.azuresptenantid .Values.acsenginecluster.kubeconfigprivatekey .Values.acsenginecluster.clientprivatekey -}}
+{{- if and .Values.acsenginecluster.resourcegroup .Values.acsenginecluster.azurespappid .Values.acsenginecluster.azurespsecret .Values.acsenginecluster.azuresptenantid .Values.acsenginecluster.clientprivatekey -}}
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
@@ -41,11 +41,6 @@ spec:
             secretKeyRef:
               name: {{ template "fullname" . }}
               key: subscription-id
-        - name: KUBECONFIG_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ template "fullname" . }}
-              key: kubeconfig-private-key
         - name: CLIENT_PRIVATE_KEY
           valueFrom:
             secretKeyRef:
@@ -56,21 +51,6 @@ spec:
             secretKeyRef:
               name: {{ template "fullname" . }}
               key: ca-private-key
-        - name: ETCD_CLIENT_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ template "fullname" .}}
-              key: etcd-client-private-key
-        - name: ETCD_SERVER_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ template "fullname" .}}
-              key: etcd-server-private-key
-        - name: ETCD_PEER_PRIVATE_KEY_0
-          valueFrom:
-            secretKeyRef:
-              name: {{ template "fullname" .}}
-              key: etcd-peer-private-key-0
         command:
             - python
             - main.py
