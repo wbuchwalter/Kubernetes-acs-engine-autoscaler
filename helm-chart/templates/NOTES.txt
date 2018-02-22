@@ -1,4 +1,4 @@
-{{- if and .Values.acsenginecluster.resourcegroup .Values.acsenginecluster.azurespappid .Values.acsenginecluster.azurespsecret .Values.acsenginecluster.azuresptenantid .Values.acsenginecluster.kubeconfigprivatekey .Values.acsenginecluster.clientprivatekey -}}
+{{- if and .Values.acsenginecluster.resourcegroup .Values.acsenginecluster.azurespappid .Values.acsenginecluster.azurespsecret .Values.acsenginecluster.azuresptenantid .Values.acsenginecluster.clientprivatekey -}}
 
 The acs-engine-autoscaler is getting provisioned in your cluster. After a few minutes, you can run the following to verify.
 
@@ -19,6 +19,6 @@ This deployment will be incomplete until all the required fields in the values.y
 To update, run:
 
     helm upgrade {{ .Release.Name }} \
-    --set acsenginecluster.resourcegroup=YOUR-RESOURCEGROUP-HERE,acsenginecluster.azurespappid=YOUR-AZURESPAPPID-HERE,acsenginecluster.azurespsecret=YOUR-AZURESPSECRET-HERE,acsenginecluster.azuresptenantid=YOUR-AZURESPTENANTID-HERE,acsenginecluster.kubeconfigprivatekey=YOUR-KUBECONFIGPRIVATEKEY-HERE,acsenginecluster.clientprivatekey=YOUR-CLIENTPRIVATEKEY-HERE stable/acs-engine-autoscaler
+    --set acsenginecluster.resourcegroup=YOUR-RESOURCEGROUP-HERE,acsenginecluster.azurespappid=YOUR-AZURESPAPPID-HERE,acsenginecluster.azurespsecret=YOUR-AZURESPSECRET-HERE,acsenginecluster.azuresptenantid=YOUR-AZURESPTENANTID-HERE,acsenginecluster.clientprivatekey=YOUR-CLIENTPRIVATEKEY-HERE stable/acs-engine-autoscaler
 
 {{- end }}

@@ -1,7 +1,7 @@
 image:
   repository: wbuchwalter/kubernetes-acs-engine-autoscaler
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 rbac:
   install: false
   apiVersion: v1beta1
@@ -11,12 +11,8 @@ acsenginecluster:
   azurespsecret: 
   azuresptenantid: 
   subscriptionid: 
-  kubeconfigprivatekey: 
   clientprivatekey: 
-  caprivatekey:
-  ## Etcd private keys are needed for acs-engine >= 0.12.0 
-  #etcdclientprivateKey: 
-  #etcdserverprivateKey: 
+  caprivatekey:  
 
   ## Optional parameter for deployment name if not using default
   #acsdeployment:
