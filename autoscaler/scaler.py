@@ -73,7 +73,7 @@ class Scaler(object):
         # we consider a node to be busy if it's running any non-DaemonSet pods
         # TODO: we can be a bit more aggressive in killing pods that are
         # replicated
-        busy_list = [p for p in node_pods if not p.is_mirrored()]
+        busy_list = [p for p in node_pods if (not p.is_mirrored() and 'kube-proxy' not in p.name)]
 
         age = (datetime.datetime.now(node.creation_time.tzinfo) - node.creation_time).seconds
 
