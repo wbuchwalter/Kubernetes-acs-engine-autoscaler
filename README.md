@@ -1,4 +1,6 @@
 
+**Deprecated! Use [Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) instead.**
+
 [![CircleCI](https://circleci.com/gh/wbuchwalter/Kubernetes-acs-engine-autoscaler.svg?style=svg)](https://circleci.com/gh/wbuchwalter/Kubernetes-acs-engine-autoscaler)
 
 
